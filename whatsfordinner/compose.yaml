@@ -9,7 +9,7 @@
 services:
   whatsfordinner:
     build: .
-    image: whatsfordinner:latest
+    image: whatsfordinner:0.1
     container_name: whatsfordinner
     restart: unless-stopped
     environment:
@@ -20,6 +20,11 @@ services:
     ports:
       # Publish on loopback only; expose via a reverse proxy if needed.
       - "127.0.0.1:${WFD_BIND_PORT:-8080}:8080"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"  # rotate after 10 MB
+        max-file: "5"    # keep at most 5 rotated files (= 50 MB total)
     networks:
       - postgres_net
 

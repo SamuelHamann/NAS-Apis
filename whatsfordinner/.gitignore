@@ -16,7 +16,6 @@ go.work.sum
 
 # Local environment overrides
 .env
-.env.*
 
 # Editor / OS noise
 .DS_Store
