@@ -1,0 +1,22 @@
+# Compiled binaries
+/bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binaries and coverage output
+*.test
+*.out
+coverage.*
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Local environment overrides
+.env
+.env.*
+
+# Editor / OS noise
+.DS_Store

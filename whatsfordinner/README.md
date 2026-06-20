@@ -1,0 +1,259 @@
+# whatsfordinner API
+
+A small, self-contained Go HTTP API, part of the [NAS-Apis](../README.md) collection.
+It is built with the Go standard library (`net/http`) — no web framework — backed by
+PostgreSQL via [pgx](https://github.com/jackc/pgx), and is designed to run as a
+container on the NAS.
+
+It currently exposes basic CRUD over the core tables (recipes, ingredients, units,
+tags and pantry stock). The relationship tables (`recipe_ingredients`, `recipe_tags`)
+are modelled but their endpoints are deferred to a later iteration.
+
+## Requirements
+
+- Go 1.25+
+- A reachable PostgreSQL database with the WhatsForDinner schema, provisioned by
+  [NAS-Images/postgres](https://github.com/SamuelHamann/NAS-Images/tree/main/postgres)
+- (optional) Docker, for building/running the container
+
+## Quick start
+
+```sh
+# from the whatsfordinner/ directory
+cp .env.example .env      # then edit DATABASE_URL / passwords
+make run                  # or: go run ./cmd/server
+```
+
+The server loads `.env` on startup (local dev) and listens on `:8080` by default:
+
+```sh
+curl http://localhost:8080/health   # {"status":"ok"}    — liveness
+curl http://localhost:8080/ready    # {"status":"ready"} — DB connectivity
+```
+
+## Configuration
+
+All settings are read from environment variables; a local `.env` file is loaded
+automatically when present (see [`.env.example`](./.env.example)). Real environment
+variables take precedence over the file.
+
+### HTTP server
+
+| Variable            | Default | Description                               |
+| ------------------- | ------- | ----------------------------------------- |
+| `WFD_HOST`          | `""`    | Interface to bind to (empty = all)        |
+| `WFD_PORT`          | `8080`  | TCP port to listen on                     |
+| `WFD_READ_TIMEOUT`  | `5s`    | Max duration for reading a request        |
+| `WFD_WRITE_TIMEOUT` | `10s`   | Max duration before timing out a response |
+| `WFD_IDLE_TIMEOUT`  | `120s`  | Keep-alive timeout for idle connections   |
+
+### Database
+
+`DATABASE_URL` takes precedence; when it is empty the DSN is assembled from the
+discrete `WFD_DB_*` settings.
+
+| Variable              | Default          | Description                                        |
+| --------------------- | ---------------- | -------------------------------------------------- |
+| `DATABASE_URL`        | _(empty)_        | Full DSN, e.g. `postgres://user:pass@host:5432/db` |
+| `WFD_DB_HOST`         | `localhost`      | Host (used only if `DATABASE_URL` is empty)        |
+| `WFD_DB_PORT`         | `5432`           | Port                                               |
+| `WFD_DB_USER`         | `whatsfordinner` | Login role                                         |
+| `WFD_DB_PASSWORD`     | `""`             | Role password                                      |
+| `WFD_DB_NAME`         | `whatsfordinner` | Database name                                      |
+| `WFD_DB_SSLMODE`      | `disable`        | `sslmode` query parameter                          |
+| `WFD_DB_MAX_CONNS`    | `10`             | Max pool connections                               |
+| `WFD_DB_CONN_TIMEOUT` | `10s`            | Timeout for the initial connect + ping             |
+
+Durations use Go's format (e.g. `500ms`, `5s`, `2m`).
+
+## Project structure
+
+```
+whatsfordinner/
+├── cmd/
+│   └── server/
+│       └── main.go          # Entry point: load env, open pool, start server
+├── internal/                # Private packages (cannot be imported externally)
+│   ├── config/              # Environment-based configuration + DSN building
+│   ├── database/            # pgx connection pool creation + ping
+│   ├── models/              # Structs mapping to each DB table (json + db tags)
+│   ├── store/               # Data-access layer (CRUD), one file per resource
+│   │   ├── store.go         # Store type, sentinel errors, error mapping
+│   │   ├── recipes.go
+│   │   ├── ingredients.go
+│   │   ├── units.go
+│   │   ├── tags.go
+│   │   └── pantry.go
+│   ├── server/              # Router, route registration, middleware
+│   │   ├── server.go        # Routes() wires every endpoint to a handler
+│   │   └── middleware.go    # Cross-cutting middleware (request logging, ...)
+│   └── handlers/            # HTTP handlers, one file per resource
+│       ├── handler.go       # Handler type + health/readiness probes
+│       ├── response.go      # JSON + error helpers, store-error -> HTTP mapping
+│       ├── params.go        # Path/query parsing helpers, shared request types
+│       ├── recipes.go
+│       ├── ingredients.go
+│       ├── units.go
+│       ├── tags.go
+│       └── pantry.go
+├── .env.example             # Template for local configuration
+├── compose.yaml             # NAS deployment (joins the shared postgres_net)
+├── Dockerfile               # Multi-stage build -> distroless runtime image
+├── Makefile                 # Common dev commands (run, build, test, ...)
+├── go.mod
+└── README.md
+```
+
+### What goes where
+
+- **`cmd/server`** — Wiring only. Loads `.env`, builds config, opens the database
+  pool, starts the server and handles graceful shutdown.
+- **`internal/config`** — Loads configuration and builds the database DSN.
+- **`internal/database`** — Creates the pgx connection pool and verifies it.
+- **`internal/models`** — One struct per table. `json` tags drive the API shape;
+  `db` tags drive row scanning via `pgx.RowToStructByName`.
+- **`internal/store`** — All SQL lives here. One file per resource exposes
+  `List/Get/Create/Update/Delete`; driver errors are translated to the sentinel
+  errors `ErrNotFound`, `ErrConflict` and `ErrReference`.
+- **`internal/server`** — Owns the `http.ServeMux` and middleware. **All routes are
+  registered in `server.go` → `Routes()`.**
+- **`internal/handlers`** — Thin HTTP layer: decode/validate input, call the store,
+  map results (and store errors) to JSON responses. Handlers are methods on
+  `Handler`, which carries the store and logger.
+
+## Data model
+
+Structs live in `internal/models`. Nullable columns are pointers and serialize to
+`null`. Server-managed fields (`id`, `created_at`, `updated_at`) are read-only.
+
+- **Recipe** (`recipes`, UUID id) — `name` (required), `description`, `instructions`,
+  `source_url`, `servings` (>0), `prep_time_minutes` (≥0), `cook_time_minutes` (≥0),
+  `created_at`, `updated_at`.
+- **Ingredient** (`ingredients`, bigint id) — `name` (required, unique, case-insensitive),
+  `created_at`.
+- **Unit** (`units`, bigint id) — `name` (required, unique, case-insensitive), `created_at`.
+- **Tag** (`tags`, bigint id) — `name` (required, unique, case-insensitive).
+- **PantryIngredient** (`pantry_ingredients`, UUID id) — `ingredient_id` (required, unique),
+  `quantity` (required, ≥0), `unit_id` (required), `note`, `is_quantified`
+  (default `true`), `updated_at`.
+- **RecipeIngredient** / **RecipeTag** — junction tables, modelled only (endpoints deferred).
+
+## API reference
+
+Conventions:
+
+- List endpoints accept `?limit` (default 50, max 200) and `?offset` (default 0).
+- Request and response bodies are JSON. Unknown fields are rejected.
+- Errors use the envelope `{"error": "message"}` with an appropriate status code
+  (`400` invalid input, `404` not found, `409` duplicate, `422` bad reference,
+  `500` server error).
+
+### Operational
+
+| Method | Path      | Description                          |
+| ------ | --------- | ------------------------------------ |
+| GET    | `/health` | Liveness check (no DB)               |
+| GET    | `/ready`  | Readiness check (pings the database) |
+
+### Recipes (`id` = UUID)
+
+| Method | Path             | Description           |
+| ------ | ---------------- | --------------------- |
+| GET    | `/recipes`       | List recipes          |
+| POST   | `/recipes`       | Create a recipe       |
+| GET    | `/recipes/{id}`  | Get a recipe by ID    |
+| PUT    | `/recipes/{id}`  | Replace a recipe      |
+| DELETE | `/recipes/{id}`  | Delete a recipe       |
+
+```sh
+curl -X POST http://localhost:8080/recipes \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Pancakes","servings":4,"prep_time_minutes":10,"cook_time_minutes":15}'
+```
+
+### Ingredients (`id` = integer)
+
+| Method | Path                | Description             |
+| ------ | ------------------- | ----------------------- |
+| GET    | `/ingredients`      | List ingredients        |
+| POST   | `/ingredients`      | Create an ingredient    |
+| GET    | `/ingredients/{id}` | Get an ingredient by ID |
+| PUT    | `/ingredients/{id}` | Rename an ingredient    |
+| DELETE | `/ingredients/{id}` | Delete an ingredient    |
+
+### Units (`id` = integer)
+
+| Method | Path          | Description       |
+| ------ | ------------- | ----------------- |
+| GET    | `/units`      | List units        |
+| POST   | `/units`      | Create a unit     |
+| GET    | `/units/{id}` | Get a unit by ID  |
+| PUT    | `/units/{id}` | Rename a unit     |
+| DELETE | `/units/{id}` | Delete a unit     |
+
+### Tags (`id` = integer)
+
+| Method | Path         | Description      |
+| ------ | ------------ | ---------------- |
+| GET    | `/tags`      | List tags        |
+| POST   | `/tags`      | Create a tag     |
+| GET    | `/tags/{id}` | Get a tag by ID  |
+| PUT    | `/tags/{id}` | Rename a tag     |
+| DELETE | `/tags/{id}` | Delete a tag     |
+
+`ingredients`, `units` and `tags` share the body `{"name": "..."}`.
+
+### Pantry stock (`id` = UUID)
+
+| Method | Path           | Description               |
+| ------ | -------------- | ------------------------- |
+| GET    | `/pantry`      | List pantry entries       |
+| POST   | `/pantry`      | Create a pantry entry     |
+| GET    | `/pantry/{id}` | Get a pantry entry by ID  |
+| PUT    | `/pantry/{id}` | Replace a pantry entry    |
+| DELETE | `/pantry/{id}` | Delete a pantry entry     |
+
+```sh
+curl -X POST http://localhost:8080/pantry \
+  -H 'Content-Type: application/json' \
+  -d '{"ingredient_id":1,"quantity":750,"unit_id":2,"note":"in the cupboard"}'
+```
+
+> **Deferred (more complex endpoints):** managing a recipe's ingredients and tags
+> as sub-resources, e.g. `GET/PUT/DELETE /recipes/{id}/ingredients` and
+> `/recipes/{id}/tags`.
+
+## Adding a new route
+
+1. Add the SQL/CRUD method to the relevant file in `internal/store/` (or a new one).
+2. Add a handler method on `*handlers.Handler` in `internal/handlers/`.
+3. Register it in `internal/server/server.go` inside `Routes()` using the
+   `"METHOD /path"` pattern (Go 1.22+ routing), e.g.:
+
+   ```go
+   mux.HandleFunc("GET /recipes/{id}", h.GetRecipe)
+   ```
+
+4. **Document the new route** in this README's API reference and in the top-level
+   [`../README.md`](../README.md).
+
+## Build & deploy
+
+```sh
+make build        # produces ./bin/whatsfordinner
+make docker       # builds the whatsfordinner:latest image
+```
+
+For the NAS, [`compose.yaml`](./compose.yaml) builds the image and joins the shared
+`postgres_net` network created by the
+[NAS-Images/postgres](https://github.com/SamuelHamann/NAS-Images/tree/main/postgres)
+stack, reaching the database at `postgres:5432`. Provide the `whatsfordinner` role
+password via `WFD_DB_PASSWORD`:
+
+```sh
+WFD_DB_PASSWORD=... docker compose up -d --build
+```
+
+The Docker image is a multi-stage build that produces a static binary on top of a
+distroless base, so the final image is tiny and runs as a non-root user — a good
+fit for running on the NAS.

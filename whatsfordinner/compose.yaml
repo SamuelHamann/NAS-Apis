@@ -1,0 +1,28 @@
+# whatsfordinner API — deployment on the NAS.
+#
+# Connects to the shared PostgreSQL stack (NAS-Images/postgres) over its
+# external docker network `postgres_net`. That stack must be running first.
+#
+# Provide WFD_DB_PASSWORD (the whatsfordinner role password) via a sibling
+# `.env` file or the environment before `docker compose up -d`.
+
+services:
+  whatsfordinner:
+    build: .
+    image: whatsfordinner:latest
+    container_name: whatsfordinner
+    restart: unless-stopped
+    environment:
+      # The host `postgres` resolves on the shared network; port 5432 is the
+      # container port (not the loopback-published one).
+      DATABASE_URL: postgres://whatsfordinner:${WFD_DB_PASSWORD:?set WFD_DB_PASSWORD}@postgres:5432/whatsfordinner
+      WFD_PORT: "8080"
+    ports:
+      # Publish on loopback only; expose via a reverse proxy if needed.
+      - "127.0.0.1:${WFD_BIND_PORT:-8080}:8080"
+    networks:
+      - postgres_net
+
+networks:
+  postgres_net:
+    external: true # created by the NAS-Images/postgres stack
