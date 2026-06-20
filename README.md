@@ -20,6 +20,7 @@ PostgreSQL-backed CRUD. Each resource below supports the standard set: `GET`
 | --------- | --------------------------------- | ------------------------------------ |
 | GET       | `/health`, `/ready`               | Liveness and DB-readiness checks     |
 | CRUD      | `/recipes`, `/recipes/{id}`       | Recipes (UUID id)                    |
+| GET       | `/recipes/cookable`               | Recipes cookable from pantry stock   |
 | CRUD      | `/ingredients`, `/ingredients/{id}` | Canonical ingredients (integer id) |
 | CRUD      | `/units`, `/units/{id}`           | Measurement units (integer id)       |
 | CRUD      | `/tags`, `/tags/{id}`             | Recipe tags (integer id)             |

@@ -157,13 +157,31 @@ Conventions:
 
 ### Recipes (`id` = UUID)
 
-| Method | Path             | Description           |
-| ------ | ---------------- | --------------------- |
-| GET    | `/recipes`       | List recipes          |
-| POST   | `/recipes`       | Create a recipe       |
-| GET    | `/recipes/{id}`  | Get a recipe by ID    |
-| PUT    | `/recipes/{id}`  | Replace a recipe      |
-| DELETE | `/recipes/{id}`  | Delete a recipe       |
+| Method | Path                    | Description                              |
+| ------ | ----------------------- | ---------------------------------------- |
+| GET    | `/recipes`              | List recipes                             |
+| POST   | `/recipes`              | Create a recipe                          |
+| GET    | `/recipes/cookable`     | Recipes cookable from pantry stock       |
+| GET    | `/recipes/{id}`         | Get a recipe by ID                       |
+| PUT    | `/recipes/{id}`         | Replace a recipe                         |
+| DELETE | `/recipes/{id}`         | Delete a recipe                          |
+
+#### `GET /recipes/cookable` — query parameters
+
+Returns recipes where **every required ingredient** is in the pantry
+(`pantry_ingredients.quantity > 0`). All parameters are optional.
+
+| Parameter   | Type              | Description                                              |
+| ----------- | ----------------- | -------------------------------------------------------- |
+| `tags`      | integer (repeat)  | Recipe must carry **all** listed tag IDs (`?tags=1&tags=2`) |
+| `max_prep`  | integer (minutes) | `prep_time_minutes ≤` value                              |
+| `max_cook`  | integer (minutes) | `cook_time_minutes ≤` value                              |
+| `max_total` | integer (minutes) | `prep_time_minutes + cook_time_minutes ≤` value          |
+| `limit`     | integer           | Page size (default 50, max 200)                          |
+| `offset`    | integer           | Page offset (default 0)                                  |
+
+> Recipes with a `NULL` time column are excluded when the matching time filter
+> is set. A recipe with no listed ingredients is always considered cookable.
 
 ```sh
 curl -X POST http://localhost:8080/recipes \

@@ -41,6 +41,7 @@ func (s *Server) Routes() http.Handler {
 	// Recipes.
 	mux.HandleFunc("GET /recipes", h.ListRecipes)
 	mux.HandleFunc("POST /recipes", h.CreateRecipe)
+	mux.HandleFunc("GET /recipes/cookable", h.ListCookableRecipes)
 	mux.HandleFunc("GET /recipes/{id}", h.GetRecipe)
 	mux.HandleFunc("PUT /recipes/{id}", h.UpdateRecipe)
 	mux.HandleFunc("DELETE /recipes/{id}", h.DeleteRecipe)

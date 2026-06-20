@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/SamuelHamann/NAS-Apis/whatsfordinner/internal/store"
@@ -128,4 +129,66 @@ func (h *Handler) DeleteRecipe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ListCookableRecipes handles GET /recipes/cookable.
+// It returns recipes whose every ingredient is present in the pantry
+// (quantity > 0). All query parameters are optional:
+//
+//	?tags=1&tags=2  – recipe must carry ALL of the given tag IDs
+//	?max_prep=30    – prep_time_minutes ≤ value
+//	?max_cook=60    – cook_time_minutes ≤ value
+//	?max_total=90   – prep + cook ≤ value (both must be set on the recipe)
+//
+// Recipes with a NULL time column are excluded when the corresponding time
+// filter is set. Supports ?limit and ?offset for pagination.
+func (h *Handler) ListCookableRecipes(w http.ResponseWriter, r *http.Request) {
+	limit, offset := pagination(r)
+	q := r.URL.Query()
+
+	var filter store.CookableFilter
+
+	// Parse optional tag IDs — repeated param: ?tags=1&tags=2.
+	for _, raw := range q["tags"] {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id <= 0 {
+			writeError(w, http.StatusBadRequest, "invalid tag id: "+raw)
+			return
+		}
+		filter.TagIDs = append(filter.TagIDs, id)
+	}
+
+	// parseMinutes parses an optional non-negative integer query parameter
+	// and writes a 400 response on invalid input.
+	parseMinutes := func(key string) (*int32, bool) {
+		raw := q.Get(key)
+		if raw == "" {
+			return nil, true
+		}
+		n, err := strconv.ParseInt(raw, 10, 32)
+		if err != nil || n < 0 {
+			writeError(w, http.StatusBadRequest, key+" must be a non-negative integer")
+			return nil, false
+		}
+		v := int32(n)
+		return &v, true
+	}
+
+	var ok bool
+	if filter.MaxPrep, ok = parseMinutes("max_prep"); !ok {
+		return
+	}
+	if filter.MaxCook, ok = parseMinutes("max_cook"); !ok {
+		return
+	}
+	if filter.MaxTotal, ok = parseMinutes("max_total"); !ok {
+		return
+	}
+
+	recipes, err := h.store.ListCookableRecipes(r.Context(), filter, limit, offset)
+	if err != nil {
+		h.respondStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, recipes)
 }
