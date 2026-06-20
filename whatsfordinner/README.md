@@ -135,7 +135,7 @@ Structs live in `internal/models`. Nullable columns are pointers and serialize t
 - **Tag** (`tags`, bigint id) — `name` (required, unique, case-insensitive).
 - **PantryIngredient** (`pantry_ingredients`, UUID id) — `ingredient_id` (required, unique),
   `quantity` (required, ≥0), `unit_id` (required), `note`, `is_quantified`
-  (default `true`), `updated_at`.
+  (default `true`), `location_id` (optional FK → `food_locations`), `updated_at`.
 - **RecipeIngredient** / **RecipeTag** — junction tables, modelled only (endpoints deferred).
 
 ## API reference
@@ -221,6 +221,22 @@ curl -X POST http://localhost:8080/recipes \
 
 `ingredients`, `units` and `tags` share the body `{"name": "..."}`.
 
+### Food locations (`id` = integer)
+
+Where ingredients are stored — `fridge`, `freezer`, `pantry`, etc. Referenced by
+the `location_id` field on pantry entries.
+
+| Method | Path              | Description             |
+| ------ | ----------------- | ----------------------- |
+| GET    | `/locations`      | List locations          |
+| POST   | `/locations`      | Create a location       |
+| GET    | `/locations/{id}` | Get a location by ID    |
+| PUT    | `/locations/{id}` | Rename a location       |
+| DELETE | `/locations/{id}` | Delete a location       |
+
+Body: `{"name": "fridge"}`. Deleting a location that is still referenced by a
+pantry entry returns `422 Unprocessable Entity` (FK `ON DELETE RESTRICT`).
+
 ### Pantry stock (`id` = UUID)
 
 | Method | Path           | Description               |
@@ -230,6 +246,35 @@ curl -X POST http://localhost:8080/recipes \
 | GET    | `/pantry/{id}` | Get a pantry entry by ID  |
 | PUT    | `/pantry/{id}` | Replace a pantry entry    |
 | DELETE | `/pantry/{id}` | Delete a pantry entry     |
+
+### Cooking history (`id` = UUID)
+
+One row per recipe — tracks how many times it has been cooked and when last.
+
+| Method | Path                          | Description                              |
+| ------ | ----------------------------- | ---------------------------------------- |
+| GET    | `/past-cooked`                | List all cooking history                 |
+| POST   | `/past-cooked`                | Record a recipe as cooked                |
+| GET    | `/past-cooked/most-cooked`    | Most-cooked recipes (sorted by count)    |
+| GET    | `/past-cooked/{id}`           | Get an entry by ID                       |
+| PUT    | `/past-cooked/{id}`           | Replace an entry                         |
+| DELETE | `/past-cooked/{id}`           | Delete an entry                          |
+
+**Create** (`POST`): `recipe_id` is required; `times_cooked` (default `1`) and `last_cooked_at` (default `now()`) are optional.
+
+```sh
+curl -X POST http://localhost:8080/past-cooked \
+  -H 'Content-Type: application/json' \
+  -d '{"recipe_id":"<uuid>"}'
+```
+
+**Update** (`PUT`): `times_cooked` is required; `last_cooked_at` is optional (defaults to `now()`).
+
+```sh
+curl -X PUT http://localhost:8080/past-cooked/<id> \
+  -H 'Content-Type: application/json' \
+  -d '{"times_cooked":3}'
+```
 
 ```sh
 curl -X POST http://localhost:8080/pantry \

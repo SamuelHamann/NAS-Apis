@@ -23,8 +23,10 @@ PostgreSQL-backed CRUD. Each resource below supports the standard set: `GET`
 | GET       | `/recipes/cookable`               | Recipes cookable from pantry stock   |
 | CRUD      | `/ingredients`, `/ingredients/{id}` | Canonical ingredients (integer id) |
 | CRUD      | `/units`, `/units/{id}`           | Measurement units (integer id)       |
+| CRUD      | `/locations`, `/locations/{id}`   | Food storage locations (integer id)  |
 | CRUD      | `/tags`, `/tags/{id}`             | Recipe tags (integer id)             |
 | CRUD      | `/pantry`, `/pantry/{id}`         | Home pantry stock (UUID id)          |
+| CRUD      | `/past-cooked`, `/past-cooked/{id}` | Cooking history (UUID id)          |
 
 See [`whatsfordinner/README.md`](./whatsfordinner/README.md) for full details,
 request bodies and configuration.

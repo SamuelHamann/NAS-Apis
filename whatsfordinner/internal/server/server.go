@@ -67,12 +67,27 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PUT /tags/{id}", h.UpdateTag)
 	mux.HandleFunc("DELETE /tags/{id}", h.DeleteTag)
 
+	// Food locations.
+	mux.HandleFunc("GET /locations", h.ListFoodLocations)
+	mux.HandleFunc("POST /locations", h.CreateFoodLocation)
+	mux.HandleFunc("GET /locations/{id}", h.GetFoodLocation)
+	mux.HandleFunc("PUT /locations/{id}", h.UpdateFoodLocation)
+	mux.HandleFunc("DELETE /locations/{id}", h.DeleteFoodLocation)
+
 	// Pantry stock.
 	mux.HandleFunc("GET /pantry", h.ListPantry)
 	mux.HandleFunc("POST /pantry", h.CreatePantryItem)
 	mux.HandleFunc("GET /pantry/{id}", h.GetPantryItem)
 	mux.HandleFunc("PUT /pantry/{id}", h.UpdatePantryItem)
 	mux.HandleFunc("DELETE /pantry/{id}", h.DeletePantryItem)
+
+	// Cooking history.
+	mux.HandleFunc("GET /past-cooked", h.ListPastCooked)
+	mux.HandleFunc("POST /past-cooked", h.CreatePastCooked)
+	mux.HandleFunc("GET /past-cooked/most-cooked", h.ListMostCooked)
+	mux.HandleFunc("GET /past-cooked/{id}", h.GetPastCooked)
+	mux.HandleFunc("PUT /past-cooked/{id}", h.UpdatePastCooked)
+	mux.HandleFunc("DELETE /past-cooked/{id}", h.DeletePastCooked)
 
 	// TODO (more complex, deferred): manage the junction tables as recipe
 	// sub-resources, e.g.

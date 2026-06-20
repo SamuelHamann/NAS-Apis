@@ -52,6 +52,14 @@ type PantryIngredient struct {
 	Note         *string   `json:"note" db:"note"`
 	IsQuantified bool      `json:"is_quantified" db:"is_quantified"`
 	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
+	LocationID   *int64    `json:"location_id" db:"location_id"`
+}
+
+// FoodLocation maps to the food_locations table (fridge, freezer, pantry, …).
+type FoodLocation struct {
+	ID        int64     `json:"id" db:"id"`
+	Name      string    `json:"name" db:"name"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
 
 // RecipeIngredient maps to the recipe_ingredients junction table.
@@ -73,4 +81,13 @@ type RecipeIngredient struct {
 type RecipeTag struct {
 	RecipeID uuid.UUID `json:"recipe_id" db:"recipe_id"`
 	TagID    int64     `json:"tag_id" db:"tag_id"`
+}
+
+// PastCookedRecipe maps to the past_cooked_recipes table.
+// There is at most one row per recipe (recipe_id is UNIQUE).
+type PastCookedRecipe struct {
+	ID           uuid.UUID `json:"id" db:"id"`
+	RecipeID     uuid.UUID `json:"recipe_id" db:"recipe_id"`
+	TimesCooked  int32     `json:"times_cooked" db:"times_cooked"`
+	LastCookedAt time.Time `json:"last_cooked_at" db:"last_cooked_at"`
 }

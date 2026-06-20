@@ -14,6 +14,7 @@ type pantryRequest struct {
 	UnitID       int64    `json:"unit_id"`
 	Note         *string  `json:"note"`
 	IsQuantified *bool    `json:"is_quantified"`
+	LocationID   *int64   `json:"location_id"` // optional — food_locations FK
 }
 
 func (req pantryRequest) validate() string {
@@ -42,6 +43,7 @@ func (req pantryRequest) toInput() store.PantryInput {
 		UnitID:       req.UnitID,
 		Note:         req.Note,
 		IsQuantified: isQuantified,
+		LocationID:   req.LocationID,
 	}
 }
 
