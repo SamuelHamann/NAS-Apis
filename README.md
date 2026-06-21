@@ -5,9 +5,9 @@ own folder and is independently buildable and deployable.
 
 ## APIs
 
-| API                                | Language | Description                                  | Status        |
-| ---------------------------------- | -------- | -------------------------------------------- | ------------- |
-| [whatsfordinner](./whatsfordinner) | Go       | Helps decide what's for dinner (recipes etc) | 🚧 Basic CRUD |
+| API                                | Language       | Description                                  | Status                                |
+| ---------------------------------- | -------------- | -------------------------------------------- | ------------------------------------- |
+| [whatsfordinner](./whatsfordinner) | Go, TypeScript | Helps decide what's for dinner (recipes etc) | 🚧 API + minimal TypeScript SPA (WIP) |
 
 ## Endpoints overview
 
@@ -29,7 +29,11 @@ PostgreSQL-backed CRUD. Each resource below supports the standard set: `GET`
 | CRUD      | `/past-cooked`, `/past-cooked/{id}` | Cooking history (UUID id)          |
 
 See [`whatsfordinner/README.md`](./whatsfordinner/README.md) for full details,
-request bodies and configuration.
+request bodies and configuration. The companion SPA lives in
+[`whatsfordinner/frontend/`](./whatsfordinner/frontend) — a tiny TypeScript +
+esbuild app (no framework) that is **embedded into the API binary** via
+`//go:embed` and served from the same origin, so the whole stack ships as a
+single container. See [`whatsfordinner/frontend/README.md`](./whatsfordinner/frontend/README.md).
 
 ## Conventions
 

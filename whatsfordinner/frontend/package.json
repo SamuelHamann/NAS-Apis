@@ -1,0 +1,20 @@
+{
+  "name": "whatsfordinner-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TypeScript single-page frontend for the whatsfordinner API.",
+  "type": "module",
+  "scripts": {
+    "dev": "esbuild src/main.ts --bundle --format=esm --outfile=public/dist/app.js --sourcemap --servedir=public --serve=localhost:5173",
+    "build": "esbuild src/main.ts --bundle --format=esm --minify --outfile=public/dist/app.js",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf public/dist"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0"
+  },
+  "allowScripts": {
+    "esbuild@0.24.2": true
+  }
+}

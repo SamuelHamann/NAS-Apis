@@ -9,6 +9,13 @@ It currently exposes basic CRUD over the core tables (recipes, ingredients, unit
 tags and pantry stock). The relationship tables (`recipe_ingredients`, `recipe_tags`)
 are modelled but their endpoints are deferred to a later iteration.
 
+A minimal TypeScript single-page frontend lives in [`./frontend/`](./frontend)
+(see [`frontend/README.md`](./frontend/README.md)). It is **built into the API
+binary itself** via `//go:embed` (see
+[`api/internal/server/static.go`](./api/internal/server/static.go)) and served
+from the same origin as the API — so the deployed stack is a single container
+with no CORS to manage and no reverse proxy required.
+
 ## Authentication
 
 Every endpoint **except** `/health` and `/ready` requires an API key.
@@ -102,37 +109,39 @@ Durations use Go's format (e.g. `500ms`, `5s`, `2m`).
 
 ```
 whatsfordinner/
-├── cmd/
-│   └── server/
-│       └── main.go          # Entry point: load env, open pool, start server
-├── internal/                # Private packages (cannot be imported externally)
-│   ├── config/              # Environment-based configuration + DSN building
-│   ├── database/            # pgx connection pool creation + ping
-│   ├── models/              # Structs mapping to each DB table (json + db tags)
-│   ├── store/               # Data-access layer (CRUD), one file per resource
-│   │   ├── store.go         # Store type, sentinel errors, error mapping
-│   │   ├── recipes.go
-│   │   ├── ingredients.go
-│   │   ├── units.go
-│   │   ├── tags.go
-│   │   └── pantry.go
-│   ├── server/              # Router, route registration, middleware
-│   │   ├── server.go        # Routes() wires every endpoint to a handler
-│   │   └── middleware.go    # Cross-cutting middleware (request logging, ...)
-│   └── handlers/            # HTTP handlers, one file per resource
-│       ├── handler.go       # Handler type + health/readiness probes
-│       ├── response.go      # JSON + error helpers, store-error -> HTTP mapping
-│       ├── params.go        # Path/query parsing helpers, shared request types
-│       ├── recipes.go
-│       ├── ingredients.go
-│       ├── units.go
-│       ├── tags.go
-│       └── pantry.go
-├── .env.example             # Template for local configuration
+├── api/                     # The Go HTTP API (this folder when imported as a module)
+│   ├── cmd/server/main.go   # Entry point: load env, open pool, start server
+│   ├── internal/            # Private packages (cannot be imported externally)
+│   │   ├── config/          # Environment-based configuration + DSN building
+│   │   ├── database/        # pgx connection pool creation + ping
+│   │   ├── models/          # Structs mapping to each DB table (json + db tags)
+│   │   ├── store/           # Data-access layer (CRUD), one file per resource
+│   │   │   ├── store.go     # Store type, sentinel errors, error mapping
+│   │   │   ├── recipes.go
+│   │   │   ├── ingredients.go
+│   │   │   ├── units.go
+│   │   │   ├── tags.go
+│   │   │   └── pantry.go
+│   │   ├── server/          # Router, route registration, middleware
+│   │   │   ├── server.go    # Routes() wires every endpoint to a handler
+│   │   │   ├── middleware.go# Cross-cutting middleware (request logging, ...)
+│   │   │   ├── static.go    # //go:embed SPA + SPA-fallback file handler
+│   │   │   └── web/         # Embedded SPA bundle (populated by `make spa`)
+│   │   └── handlers/        # HTTP handlers, one file per resource
+│   │       ├── handler.go   # Handler type + health/readiness probes
+│   │       ├── response.go  # JSON + error helpers, store-error -> HTTP mapping
+│   │       ├── params.go    # Path/query parsing helpers, shared request types
+│   │       ├── recipes.go
+│   │       ├── ingredients.go
+│   │       ├── units.go
+│   │       ├── tags.go
+│   │       └── pantry.go
+│   ├── Dockerfile           # 3-stage build: Node (SPA) -> Go -> distroless
+│   ├── Makefile             # Common dev commands (run, build, spa, test, ...)
+│   ├── go.mod
+│   └── .env.example         # Template for local configuration
+├── frontend/                # TypeScript single-page app (see frontend/README.md)
 ├── compose.yaml             # NAS deployment (joins the shared postgres_net)
-├── Dockerfile               # Multi-stage build -> distroless runtime image
-├── Makefile                 # Common dev commands (run, build, test, ...)
-├── go.mod
 └── README.md
 ```
 
@@ -148,7 +157,9 @@ whatsfordinner/
   `List/Get/Create/Update/Delete`; driver errors are translated to the sentinel
   errors `ErrNotFound`, `ErrConflict` and `ErrReference`.
 - **`internal/server`** — Owns the `http.ServeMux` and middleware. **All routes are
-  registered in `server.go` → `Routes()`.**
+  registered in `server.go` → `Routes()`.** `static.go` embeds the built SPA via
+  `//go:embed all:web` and serves it as the catch-all (with an `index.html`
+  fallback for unknown paths so the client-side router can render the right view).
 - **`internal/handlers`** — Thin HTTP layer: decode/validate input, call the store,
   map results (and store errors) to JSON responses. Handlers are methods on
   `Handler`, which carries the store and logger.
@@ -335,20 +346,41 @@ curl -X POST http://localhost:8080/pantry \
 ## Build & deploy
 
 ```sh
-make build        # produces ./bin/whatsfordinner
-make docker       # builds the whatsfordinner:latest image
+make spa          # builds the SPA and copies it into internal/server/web
+make build        # produces ./bin/whatsfordinner (with the SPA embedded)
+make docker       # builds the whatsfordinner:latest image (does both of the above in-stage)
 ```
+
+`make build` and `make run` depend on `make spa`, so a single command keeps the
+embedded bundle in sync with the latest TypeScript source.
 
 For the NAS, [`compose.yaml`](./compose.yaml) builds the image and joins the shared
 `postgres_net` network created by the
 [NAS-Images/postgres](https://github.com/SamuelHamann/NAS-Images/tree/main/postgres)
-stack, reaching the database at `postgres:5432`. Provide the `whatsfordinner` role
-password via `WFD_DB_PASSWORD`:
+stack, reaching the database at `postgres:5432`. The build context is the
+`whatsfordinner/` folder so the Dockerfile (`api/Dockerfile`) can see both
+`./api` and `./frontend` and build them into a single image. Provide the
+`whatsfordinner` role password via `WFD_DB_PASSWORD`:
 
 ```sh
 WFD_DB_PASSWORD=... docker compose up -d --build
 ```
 
-The Docker image is a multi-stage build that produces a static binary on top of a
-distroless base, so the final image is tiny and runs as a non-root user — a good
-fit for running on the NAS.
+Direct `docker build` invocations:
+
+```sh
+# from whatsfordinner/
+docker build -f api/Dockerfile -t shamann4242/whatsfordinner:0.2-amd64 .
+
+# from whatsfordinner/api/
+make docker            # equivalent
+```
+
+The Docker image is a three-stage build (Node → Go → distroless): the SPA is
+built with esbuild, its `public/` directory is copied into the Go embed root,
+and `go build` produces a single static binary on top of a distroless base.
+The resulting image is tiny, runs as a non-root user, and serves both the API
+and the frontend from one origin — a good fit for the NAS.
+
+Browse the app at `http://<nas>:${WFD_BIND_PORT:-8080}/` and let the SPA's
+in-app Settings page populate the API key from `localStorage`.
