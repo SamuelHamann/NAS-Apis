@@ -9,9 +9,11 @@
 services:
   whatsfordinner:
     build: .
-    image: whatsfordinner:0.1
+    image: shamann4242/whatsfordinner:0.1-amd64
     container_name: whatsfordinner
     restart: unless-stopped
+    env_file:
+      - /volume1/docker/whats-for-dinner/.env
     environment:
       # The host `postgres` resolves on the shared network; port 5432 is the
       # container port (not the loopback-published one).

@@ -1,0 +1,25 @@
+# Local development environment for the whatsfordinner API.
+# This file is git-ignored — keep real secrets out of version control.
+# It is also read automatically by Docker Compose for the variables below.
+
+# --- HTTP server ---
+WFD_HOST=
+WFD_PORT=8080
+WFD_READ_TIMEOUT=5s
+WFD_WRITE_TIMEOUT=10s
+WFD_IDLE_TIMEOUT=120s
+
+# --- Database (application connection) ---
+# Defaults assume the shared postgres stack from NAS-Images is running with its
+# port bound to localhost:5433 (POSTGRES_BIND_PORT=5433).
+DATABASE_URL=postgres://whatsfordinner:change-me-whatsfordinner@localhost:5433/whatsfordinner?sslmode=disable
+
+WFD_DB_MAX_CONNS=10
+WFD_DB_CONN_TIMEOUT=10s
+
+# --- Docker Compose only ---
+# WFD_DB_PASSWORD is required by compose.yaml for the DATABASE_URL substitution
+# (must match the whatsfordinner role password in the NAS-Images/postgres stack).
+# WFD_BIND_PORT is the host loopback port the API is published on.
+WFD_DB_PASSWORD="pT1dbbXzzUcvHErQlGuAGDW2WlJ7yyzcCBGUEoafN3k="
+WFD_BIND_PORT=8080
