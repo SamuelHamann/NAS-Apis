@@ -1,0 +1,35 @@
+# whatsfordinner API — deployment on the NAS.
+#
+# Connects to the shared PostgreSQL stack (NAS-Images/postgres) over its
+# external docker network `postgres_net`. That stack must be running first.
+#
+# Provide WFD_DB_PASSWORD (the whatsfordinner role password) via a sibling
+# `.env` file or the environment before `docker compose up -d`.
+
+services:
+  whatsfordinner:
+    build: ./api
+    image: shamann4242/whatsfordinner:0.1-amd64
+    container_name: whatsfordinner-api
+    restart: unless-stopped
+    env_file:
+      - /volume1/docker/whats-for-dinner/api/.env
+    environment:
+      # The host `postgres` resolves on the shared network; port 5432 is the
+      # container port (not the loopback-published one).
+      DATABASE_URL: postgres://whatsfordinner:${WFD_DB_PASSWORD:?set WFD_DB_PASSWORD}@postgres:5432/whatsfordinner
+      WFD_PORT: "8080"
+    ports:
+      # Published on all interfaces so the host and LAN can reach the API directly.
+      - "${WFD_BIND_PORT:-8080}:8080"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"  # rotate after 10 MB
+        max-file: "5"    # keep at most 5 rotated files (= 50 MB total)
+    networks:
+      - postgres_net
+
+networks:
+  postgres_net:
+    external: true # created by the NAS-Images/postgres stack
