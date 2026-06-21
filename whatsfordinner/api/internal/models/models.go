@@ -91,3 +91,10 @@ type PastCookedRecipe struct {
 	TimesCooked  int32     `json:"times_cooked" db:"times_cooked"`
 	LastCookedAt time.Time `json:"last_cooked_at" db:"last_cooked_at"`
 }
+
+// APIKey maps to the api_keys table. The UUID id IS the key — clients pass it
+// verbatim in the X-Api-Key request header.
+type APIKey struct {
+	ID        uuid.UUID `json:"id" db:"id"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+}
