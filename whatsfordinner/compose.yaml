@@ -1,28 +1,11 @@
-# whatsfordinner — deployment on the NAS.
-#
-# Two services:
-#   * `whatsfordinner`          — the Go API, backed by the shared postgres stack.
-#   * `whatsfordinner-frontend` — nginx serving the static SPA, with `/api/*`
-#                                 proxied to the API container so the browser
-#                                 sees a single origin (no CORS to manage).
-#
-# The shared postgres stack (NAS-Images/postgres) must be running first so
-# `postgres_net` exists.
-#
-# Provide WFD_DB_PASSWORD (the whatsfordinner role password) via a sibling
-# `.env` file or the environment before `docker compose up -d`.
-
 services:
   whatsfordinner:
-    build: ./api
     image: shamann4242/whatsfordinner:0.1-amd64
     container_name: whatsfordinner-api
     restart: unless-stopped
     env_file:
-      - /volume1/docker/whats-for-dinner/api/.env
+      - ./api/.env
     environment:
-      # The host `postgres` resolves on the shared network; port 5432 is the
-      # container port (not the loopback-published one).
       WFD_PORT: "8080"
     ports:
       # Published on all interfaces so the host and LAN can reach the API directly.
@@ -34,23 +17,6 @@ services:
         max-file: "5"    # keep at most 5 rotated files (= 50 MB total)
     networks:
       - postgres_net
-
-  whatsfordinner-frontend:
-    build: ./frontend
-    image: shamann4242/whatsfordinner-frontend:0.1.1-amd64
-    container_name: whatsfordinner-frontend
-    restart: unless-stopped
-    depends_on:
-      - whatsfordinner
-    # Host networking: nginx binds directly to the NAS on port 8081 (see
-    # nginx.conf) and proxies /api/* to 127.0.0.1:8080 where the API is
-    # published. `ports:` and `networks:` are incompatible with host mode.
-    network_mode: host
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
 
 networks:
   postgres_net:
