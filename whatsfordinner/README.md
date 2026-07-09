@@ -146,6 +146,7 @@ whatsfordinner/
 │   ├── templates/           # Go html/template pages + shared partials
 │   │   ├── styles.html      # {{define "styles"}} - design tokens + all CSS
 │   │   ├── icons.html       # {{define "icon-*"}} - shared inline SVG icons
+│   │   ├── scripts.html     # {{define "search-script"}} - live "type to filter" JS, shared by recipes.html/pantry.html
 │   │   ├── navbar.html      # {{define "navbar"}} - shared top nav (+ Pantry/Recipes/Ingredients links)
 │   │   ├── home.html        # GET / and /home
 │   │   ├── login.html       # GET /login
@@ -381,6 +382,9 @@ Grouping modes:
 Recipes with zero required ingredients are treated as trivially ready
 (`missing_count = 0`), matching `/recipes/cookable`'s semantics.
 
+A search box above the toolbar filters the currently rendered cards live,
+client-side, as you type — see [Live search](#live-search) below.
+
 ### Recipe detail page (`GET /recipes/{id}`)
 
 Clicking a recipe on the recipes page opens its full detail: name,
@@ -446,6 +450,35 @@ card in location mode is still rendered in red.
 
 The tag filter chips are populated from the `tags` table and use OR
 semantics (matching any selected tag counts).
+
+A search box above the toolbar filters the currently rendered cards live,
+client-side, as you type — see [Live search](#live-search) below.
+
+### Live search
+
+Both the recipes and pantry pages have a search box in the toolbar that
+filters by name — a plain, case-insensitive "contains" match — updating on
+every keystroke. This is deliberately **client-side only** (no request to
+the server, no page reload): the box only ever affects the set of
+cards/items already rendered in the current page load, so it composes with
+the sort/tag-filter query params but doesn't replace them (e.g. it won't
+find a recipe excluded by the tag filter — clear the tag filter for that).
+
+Implementation: a small dependency-free vanilla-JS partial,
+`{{template "search-script" .}}` (`templates/scripts.html`), wired up
+entirely through data attributes — no page-specific script needed:
+
+- the search `<input>` carries `data-search-input="#<cards-id>"` (which
+  container to filter) and `data-search-empty="#<empty-id>"` (which element
+  to reveal when nothing matches);
+- every card (`.wfd-pantry-card` / `.wfd-status-card`) carries
+  `data-search-card`, so it hides itself once every item inside it is
+  filtered out;
+- every item carries `data-search-name="..."` (the ingredient/recipe name)
+  to match against.
+
+Degrades gracefully with JavaScript disabled: the box just does nothing and
+every item stays visible, as if nothing had been typed.
 
 ### Template FuncMap
 

@@ -74,6 +74,18 @@
   h1, h2, h3, p { margin: 0 0 0.5em; }
   button { font: inherit; }
 
+  /* The [hidden] attribute is only ever "display: none" via the browser's
+     default (user-agent) stylesheet, which loses to *any* author rule that
+     sets `display` on the same element — including flex/grid layout rules
+     like .wfd-pantry-item/.wfd-status-item below. Without this override,
+     templates/scripts.html's search filter (which toggles `.hidden` on
+     individual rows) has no visual effect until every row in a card is
+     hidden and the *card* itself disappears — which looks exactly like
+     "nothing happens until it all disappears at once". Re-assert it here,
+     after the reset but before anything sets `display` on a real element,
+     so it always wins. */
+  [hidden] { display: none !important; }
+
   .wfd-container {
     width: 100%;
     max-width: var(--wfd-max-width);
@@ -499,6 +511,38 @@
     color: var(--wfd-text-muted);
     font-weight: 600;
   }
+
+  /* Live "type to filter" search box (see templates/scripts.html for the
+     JS that actually does the filtering). */
+  .wfd-search {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: 44px;
+    padding-inline: 0.75rem;
+    border-radius: var(--wfd-radius-sm);
+    border: 1px solid var(--wfd-border);
+    background: var(--wfd-surface);
+    color: var(--wfd-text-muted);
+    width: 100%;
+    max-width: 360px;
+  }
+  .wfd-search:focus-within {
+    outline: 2px solid var(--wfd-primary);
+    outline-offset: 1px;
+  }
+  .wfd-search svg { width: 18px; height: 18px; flex: none; }
+  .wfd-search input[type="search"] {
+    flex: 1 1 auto;
+    min-width: 0;
+    border: none;
+    background: none;
+    color: var(--wfd-text);
+    font: inherit;
+    font-size: 0.95rem;
+  }
+  .wfd-search input[type="search"]:focus { outline: none; }
+  .wfd-search input[type="search"]::-webkit-search-cancel-button { cursor: pointer; }
 
   /* Tag filter: horizontally-scrolling row of pill-shaped checkboxes. */
   .wfd-tag-filter {

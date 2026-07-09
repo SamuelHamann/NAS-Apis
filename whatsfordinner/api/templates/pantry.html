@@ -35,6 +35,15 @@
     <form id="pantry-view" method="get" action="/pantry" hidden></form>
 
     <div class="wfd-toolbar">
+      <div class="wfd-toolbar__row">
+        <label class="wfd-search">
+          {{template "icon-search"}}
+          <input type="search" placeholder="Search pantry…" aria-label="Search pantry items"
+                 data-search-input="#pantry-cards" data-search-empty="#pantry-search-empty"
+                 autocomplete="off" />
+        </label>
+      </div>
+
       <div class="wfd-toolbar__row wfd-toolbar__row--between">
         {{if gt (len .Pantries) 1}}
         <label class="wfd-toolbar__group-label" style="display:flex;align-items:center;gap:0.5rem;">
@@ -100,9 +109,9 @@
         {{else}}Your pantry is empty — use “Add item” to add your first entry.{{end}}
       </p>
     {{else}}
-      <div class="wfd-pantry-cards">
+      <div class="wfd-pantry-cards" id="pantry-cards">
         {{range .Cards}}
-        <section class="wfd-pantry-card{{if eq .Tone "danger"}} wfd-pantry-card--danger{{else if eq .Tone "warning"}} wfd-pantry-card--warning{{end}}">
+        <section class="wfd-pantry-card{{if eq .Tone "danger"}} wfd-pantry-card--danger{{else if eq .Tone "warning"}} wfd-pantry-card--warning{{end}}" data-search-card>
           <header class="wfd-pantry-card__title">
             <span>{{.Title}}</span>
             <span class="wfd-pantry-card__count">{{len .Items}} item{{if ne (len .Items) 1}}s{{end}}</span>
@@ -113,8 +122,11 @@
         </section>
         {{end}}
       </div>
+      <p class="wfd-list-empty" id="pantry-search-empty" hidden>No pantry items match your search.</p>
     {{end}}
   </main>
+
+  {{template "search-script" .}}
 </body>
 </html>
 
@@ -126,7 +138,7 @@
 {{define "pantry_item"}}
 {{ $item := .Item }}
 {{ $data := .PantryPageData }}
-<div class="wfd-pantry-item{{if eq (printf "%s" $item.ExpirationClass) "expired"}} wfd-pantry-item--expired{{else if eq (printf "%s" $item.ExpirationClass) "soon"}} wfd-pantry-item--soon{{end}}">
+<div class="wfd-pantry-item{{if eq (printf "%s" $item.ExpirationClass) "expired"}} wfd-pantry-item--expired{{else if eq (printf "%s" $item.ExpirationClass) "soon"}} wfd-pantry-item--soon{{end}}" data-search-name="{{$item.IngredientName}}">
   <div class="wfd-pantry-item__body">
     <div class="wfd-pantry-item__title">
       <span>{{$item.IngredientName}}</span>

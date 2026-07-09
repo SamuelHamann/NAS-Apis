@@ -1,0 +1,58 @@
+{{/*
+    Shared vanilla-JS behaviour for pages with a live "type to filter"
+    search box (currently pantry.html and recipes.html). Kept in one place
+    so both pages get identical behaviour without duplicating a script tag.
+    Include once, right before the closing body tag, via
+    {{template "search-script" .}}.
+
+    Wire-up is entirely via data attributes, no page-specific JS needed:
+      - the search input carries data-search-input pointing (as a CSS
+        selector) at the container holding the results, and
+        data-search-empty pointing at a hidden "no matches" element;
+      - every filterable row inside that container carries
+        data-search-name with the text to match against;
+      - every card/section that should hide once all of its rows are
+        filtered out carries a data-search-card attribute.
+
+    On every keystroke (the "input" event fires per character, unlike
+    "change"), rows whose data-search-name doesn't contain the typed text
+    (case-insensitive, plain substring match) are hidden; a card with zero
+    visible rows is hidden too; the data-search-empty element is only shown
+    once the box has text in it AND nothing at all matches, so the
+    server-rendered empty states (no pantry, tag filter excludes
+    everything, ...) aren't affected while the box is empty. Degrades
+    gracefully with JS disabled: everything just stays visible, as if
+    nothing had been typed.
+*/}}
+{{define "search-script"}}
+<script>
+(function () {
+  document.querySelectorAll('[data-search-input]').forEach(function (input) {
+    var scope = document.querySelector(input.getAttribute('data-search-input'));
+    if (!scope) return;
+    var empty = document.querySelector(input.getAttribute('data-search-empty') || '');
+
+    function apply() {
+      var q = input.value.trim().toLowerCase();
+      var anyVisible = false;
+
+      scope.querySelectorAll('[data-search-name]').forEach(function (item) {
+        var name = (item.getAttribute('data-search-name') || '').toLowerCase();
+        var match = q === '' || name.indexOf(q) !== -1;
+        item.hidden = !match;
+        if (match) anyVisible = true;
+      });
+
+      scope.querySelectorAll('[data-search-card]').forEach(function (card) {
+        card.hidden = card.querySelectorAll('[data-search-name]:not([hidden])').length === 0;
+      });
+
+      if (empty) empty.hidden = q === '' || anyVisible;
+    }
+
+    input.addEventListener('input', apply);
+    apply();
+  });
+})();
+</script>
+{{end}}
