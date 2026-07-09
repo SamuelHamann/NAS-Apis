@@ -86,7 +86,7 @@ func (h *Handler) CreateRecipe(w http.ResponseWriter, r *http.Request) {
 
 // GetRecipe handles GET /recipes/{id}.
 func (h *Handler) GetRecipe(w http.ResponseWriter, r *http.Request) {
-	id, ok := parseUUIDPath(w, r, "id")
+	id, ok := parseInt64Path(w, r, "id")
 	if !ok {
 		return
 	}
@@ -101,7 +101,7 @@ func (h *Handler) GetRecipe(w http.ResponseWriter, r *http.Request) {
 
 // UpdateRecipe handles PUT /recipes/{id}.
 func (h *Handler) UpdateRecipe(w http.ResponseWriter, r *http.Request) {
-	id, ok := parseUUIDPath(w, r, "id")
+	id, ok := parseInt64Path(w, r, "id")
 	if !ok {
 		return
 	}
@@ -126,7 +126,7 @@ func (h *Handler) UpdateRecipe(w http.ResponseWriter, r *http.Request) {
 
 // DeleteRecipe handles DELETE /recipes/{id}.
 func (h *Handler) DeleteRecipe(w http.ResponseWriter, r *http.Request) {
-	id, ok := parseUUIDPath(w, r, "id")
+	id, ok := parseInt64Path(w, r, "id")
 	if !ok {
 		return
 	}

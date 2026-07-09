@@ -122,7 +122,6 @@ func (s *Server) Routes() http.Handler {
 	// off JSON responses onto server-rendered templates.
 	mux.HandleFunc("GET /{$}", h.Home)
 	mux.HandleFunc("GET /home", h.Home)
-	mux.HandleFunc("/recipes", h.ListRecipes)
 
 	// Sign-in / user management. There is no password: /login lists every
 	// user so one can be picked (POST .../select sets a cookie), and doubles
@@ -132,6 +131,12 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /users/{id}/update", h.UpdateUser)
 	mux.HandleFunc("POST /users/{id}/delete", h.DeleteUser)
 	mux.HandleFunc("POST /users/{id}/select", h.SelectUser)
+
+	// Recipes page: every recipe grouped by how many of its ingredients
+	// are missing from the selected pantry (green = ready, orange = a few
+	// missing, default = further off), with alphabetical fallback and a
+	// tag filter. See templates/recipes.html.
+	mux.HandleFunc("GET /recipes", h.RecipesPage)
 
 	// Pantry page: grouped, colour-coded list of the selected pantry's
 	// contents, with sort/filter controls and inline CRUD via HTML forms.

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>{{.Title}} · What's for Dinner</title>
+  {{template "styles" .}}
+</head>
+<body>
+  {{template "navbar" .}}
+
+  <main class="wfd-main wfd-container">
+    <h1 class="wfd-page-title">Recipes</h1>
+    {{if .SelectedPantry}}
+      <p class="wfd-page-subtitle">Ranked against <strong>{{.SelectedPantry.Name}}</strong>.</p>
+    {{else}}
+      <p class="wfd-page-subtitle">Add a pantry to see what you can cook right now.</p>
+    {{end}}
+
+    {{/* --- Toolbar --------------------------------------------------------
+
+         Same nesting-safe layout as the pantry page: the actual filter form
+         is an empty sibling, and every toolbar input opts back into it via
+         `form="recipes-view"`. See the comment on pantry.html for why. */}}
+    <form id="recipes-view" method="get" action="/recipes" hidden></form>
+
+    <div class="wfd-toolbar">
+      <div class="wfd-toolbar__row wfd-toolbar__row--between">
+        {{if gt (len .Pantries) 1}}
+        <label class="wfd-toolbar__group-label" style="display:flex;align-items:center;gap:0.5rem;">
+          Pantry
+          <select name="pantry_id" form="recipes-view" onchange="this.form.submit()">
+            {{range .Pantries}}
+              <option value="{{.ID}}" {{if and $.SelectedPantry (eq $.SelectedPantry.ID .ID)}}selected{{end}}>{{.Name}}</option>
+            {{end}}
+          </select>
+        </label>
+        {{else if .SelectedPantry}}
+        <input type="hidden" name="pantry_id" form="recipes-view" value="{{.SelectedPantry.ID}}" />
+        <span class="wfd-toolbar__group-label">Pantry: {{.SelectedPantry.Name}}</span>
+        {{end}}
+      </div>
+
+      <div class="wfd-toolbar__row">
+        <label class="wfd-toolbar__group-label" style="display:flex;align-items:center;gap:0.5rem;">
+          Sort by
+          <select name="sort" form="recipes-view" onchange="this.form.submit()">
+            {{/* "Missing" only makes sense with a pantry to compare against;
+                 disable the option when there isn't one so the UI matches the
+                 handler-side fallback. */}}
+            <option value="missing"      {{if not .SelectedPantry}}disabled{{end}} {{if eq (printf "%s" .Sort) "missing"}}selected{{end}}>Ingredient availability</option>
+            <option value="alphabetical" {{if eq (printf "%s" .Sort) "alphabetical"}}selected{{end}}>Alphabetical</option>
+          </select>
+        </label>
+      </div>
+
+      {{if .Tags}}
+      <div class="wfd-toolbar__row">
+        <span class="wfd-toolbar__group-label" style="display:inline-flex;align-items:center;gap:0.35rem;">
+          {{template "icon-filter"}} Tags
+        </span>
+        <div class="wfd-tag-filter">
+          {{range .Tags}}
+          <label class="wfd-tag-filter__chip">
+            <input type="checkbox" name="tags" value="{{.ID}}" form="recipes-view" {{if index $.SelectedTagIDs .ID}}checked{{end}} onchange="this.form.submit()" />
+            <span>{{.Name}}</span>
+          </label>
+          {{end}}
+        </div>
+      </div>
+      {{end}}
+    </div>
+
+    {{/* --- Content --------------------------------------------------- */}}
+    {{if not .Cards}}
+      <p class="wfd-list-empty">
+        {{if .SelectedTagIDs}}No recipes match this tag filter.
+        {{else}}No recipes yet — add some to get started.{{end}}
+      </p>
+    {{else}}
+      <div class="wfd-status-cards">
+        {{range .Cards}}
+        <section class="wfd-status-card{{if eq .Tone "success"}} wfd-status-card--success{{else if eq .Tone "warning"}} wfd-status-card--warning{{end}}">
+          <header class="wfd-status-card__title">
+            <span>{{.Title}}</span>
+            <span class="wfd-status-card__count">{{len .Items}} recipe{{if ne (len .Items) 1}}s{{end}}</span>
+          </header>
+          {{range .Items}}
+            {{template "recipe_item" (dict "Item" . "RecipesPageData" $)}}
+          {{end}}
+        </section>
+        {{end}}
+      </div>
+    {{end}}
+  </main>
+</body>
+</html>
+
+{{/* -----------------------------------------------------------------------
+     One recipe row. Colour tint follows the pre-computed Readiness so a
+     "ready" recipe stays green even inside the "All recipes" alphabetical
+     card. Expects a dict with:
+        Item              (RecipeItemView)
+        RecipesPageData   (the outer .; used for the pantry context)
+   ----------------------------------------------------------------------- */}}
+{{define "recipe_item"}}
+{{ $item := .Item }}
+{{ $data := .RecipesPageData }}
+<article class="wfd-status-item{{if eq (printf "%s" $item.Readiness) "ready"}} wfd-status-item--success{{else if eq (printf "%s" $item.Readiness) "nearly"}} wfd-status-item--warning{{end}}">
+  <div class="wfd-status-item__body">
+    <div class="wfd-status-item__title">
+      <span>{{$item.Name}}</span>
+      {{if $data.SelectedPantry}}
+        {{if eq (printf "%s" $item.Readiness) "ready"}}
+          <span class="wfd-status-item__qty">Ready to cook</span>
+        {{else}}
+          <span class="wfd-status-item__qty">Missing <strong>{{$item.MissingCount}}</strong> ingredient{{if ne $item.MissingCount 1}}s{{end}}</span>
+        {{end}}
+      {{end}}
+    </div>
+
+    <div class="wfd-status-item__meta">
+      {{if $item.Description}}
+        <span>{{$item.Description}}</span>
+      {{end}}
+      {{if $item.Servings}}
+        <span>Serves <strong>{{$item.Servings}}</strong></span>
+      {{end}}
+      {{if $item.PrepTimeMinutes}}
+        <span>Prep <strong>{{$item.PrepTimeMinutes}}m</strong></span>
+      {{end}}
+      {{if $item.CookTimeMinutes}}
+        <span>Cook <strong>{{$item.CookTimeMinutes}}m</strong></span>
+      {{end}}
+    </div>
+
+    {{if $item.TagNames}}
+    <div class="wfd-status-item__tags">
+      {{range $item.TagNames}}
+        <span class="wfd-tag-chip">{{.}}</span>
+      {{end}}
+    </div>
+    {{end}}
+  </div>
+</article>
+{{end}}

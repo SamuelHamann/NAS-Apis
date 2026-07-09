@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/SamuelHamann/NAS-Apis/whatsfordinner/internal/models"
@@ -43,8 +42,103 @@ func (s *Store) ListRecipes(ctx context.Context, limit, offset int) ([]models.Re
 	return recipes, nil
 }
 
+// RecipeStatusFilter narrows what ListRecipesWithStatus returns. Empty
+// slices / nil pointers mean "no filter on that dimension".
+type RecipeStatusFilter struct {
+	// TagIDs, if non-empty, restricts results to recipes that carry ALL of
+	// these tags — matching CookableFilter's semantics.
+	TagIDs []int64
+}
+
+// RecipeStatusRow is a recipe plus the "how close am I to cooking this?"
+// data used by the /recipes page: how many of the recipe's ingredients are
+// missing from the selected pantry, and the recipe's tag names for the row's
+// chip strip.
+//
+// MissingCount == 0 means every ingredient the recipe needs is stocked
+// (recipes with no listed ingredients are trivially "ready" — MissingCount
+// stays 0).
+type RecipeStatusRow struct {
+	models.Recipe
+
+	MissingCount int64    `db:"missing_count"`
+	TagNames     []string `db:"tag_names"`
+}
+
+// ListRecipesWithStatus returns every recipe, each annotated with how many
+// of its required ingredients are missing from the given pantry and the
+// list of its tag names. Results are ordered by MissingCount ASC then name,
+// which matches the /recipes page's default "by ingredient availability"
+// sort so callers can re-group in Go without re-sorting.
+//
+// When pantryID is 0 the missing-count query is skipped and every row is
+// treated as "no data" (MissingCount = number of the recipe's ingredients).
+// The pantry-less case is only reached by the handler when there is no
+// selected pantry, and it falls back to alphabetical sort anyway; the
+// numeric value on each row is not shown.
+func (s *Store) ListRecipesWithStatus(ctx context.Context, pantryID int64, f RecipeStatusFilter) ([]RecipeStatusRow, error) {
+	var tagParam any
+	if len(f.TagIDs) > 0 {
+		tagParam = f.TagIDs
+	}
+
+	// $1 = pantry id, $2 = tag ids (nullable bigint[]).
+	//
+	// The missing-count subquery counts each recipe ingredient that is
+	// NOT stocked in $1's pantry with quantity > 0. LEFT JOIN LATERAL is
+	// used so recipes with no ingredients still return a row (with count 0).
+	//
+	// Tag names come from an ordered array_agg so the template can render
+	// them without a second query.
+	rows, err := s.pool.Query(ctx, `
+		SELECT
+		    r.id, r.name, r.description, r.instructions, r.source_url,
+		    r.servings, r.prep_time_minutes, r.cook_time_minutes,
+		    r.created_at, r.updated_at,
+		    COALESCE(missing.cnt, 0)::bigint AS missing_count,
+		    COALESCE(
+		        (SELECT array_agg(t.name ORDER BY t.name)
+		         FROM   recipe_tags rt
+		         JOIN   tags t ON t.id = rt.tag_id
+		         WHERE  rt.recipe_id = r.id),
+		        ARRAY[]::text[]
+		    ) AS tag_names
+		FROM   recipes r
+		LEFT JOIN LATERAL (
+		    SELECT COUNT(*) AS cnt
+		    FROM   recipe_ingredients ri
+		    WHERE  ri.recipe_id = r.id
+		      AND  NOT EXISTS (
+		               SELECT 1
+		               FROM   pantry_ingredients pi
+		               WHERE  pi.pantry_id     = $1
+		                 AND  pi.ingredient_id = ri.ingredient_id
+		                 AND  pi.quantity      > 0
+		           )
+		) missing ON true
+		WHERE
+		    -- Optional AND tag filter: recipe must carry every requested tag.
+		    ($2::bigint[] IS NULL OR (
+		        SELECT COUNT(*)
+		        FROM   recipe_tags rt
+		        WHERE  rt.recipe_id = r.id
+		          AND  rt.tag_id = ANY($2::bigint[])
+		    ) = array_length($2::bigint[], 1))
+		ORDER BY missing_count ASC, r.name`,
+		pantryID, tagParam)
+	if err != nil {
+		return nil, mapError(err)
+	}
+
+	recipes, err := pgx.CollectRows(rows, pgx.RowToStructByName[RecipeStatusRow])
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return recipes, nil
+}
+
 // GetRecipe returns a single recipe by ID.
-func (s *Store) GetRecipe(ctx context.Context, id uuid.UUID) (models.Recipe, error) {
+func (s *Store) GetRecipe(ctx context.Context, id int64) (models.Recipe, error) {
 	rows, err := s.pool.Query(ctx, `SELECT `+recipeColumns+` FROM recipes WHERE id = $1`, id)
 	if err != nil {
 		return models.Recipe{}, mapError(err)
@@ -78,7 +172,7 @@ func (s *Store) CreateRecipe(ctx context.Context, in RecipeInput) (models.Recipe
 }
 
 // UpdateRecipe overwrites an existing recipe and returns the stored row.
-func (s *Store) UpdateRecipe(ctx context.Context, id uuid.UUID, in RecipeInput) (models.Recipe, error) {
+func (s *Store) UpdateRecipe(ctx context.Context, id int64, in RecipeInput) (models.Recipe, error) {
 	rows, err := s.pool.Query(ctx, `
 		UPDATE recipes
 		SET name = $2, description = $3, instructions = $4, source_url = $5,
@@ -100,7 +194,7 @@ func (s *Store) UpdateRecipe(ctx context.Context, id uuid.UUID, in RecipeInput) 
 }
 
 // DeleteRecipe removes a recipe by ID.
-func (s *Store) DeleteRecipe(ctx context.Context, id uuid.UUID) error {
+func (s *Store) DeleteRecipe(ctx context.Context, id int64) error {
 	tag, err := s.pool.Exec(ctx, `DELETE FROM recipes WHERE id = $1`, id)
 	if err != nil {
 		return mapError(err)

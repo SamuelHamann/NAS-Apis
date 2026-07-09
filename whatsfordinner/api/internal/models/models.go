@@ -11,7 +11,7 @@ import (
 
 // Recipe maps to the recipes table.
 type Recipe struct {
-	ID              uuid.UUID `json:"id" db:"id"`
+	ID              int64     `json:"id" db:"id"`
 	Name            string    `json:"name" db:"name"`
 	Description     *string   `json:"description" db:"description"`
 	Instructions    *string   `json:"instructions" db:"instructions"`
@@ -80,11 +80,11 @@ type FoodLocation struct {
 // Full CRUD for this relationship is intentionally deferred — it is managed as
 // a sub-resource of a recipe (see the "more complex endpoints" TODO).
 type RecipeIngredient struct {
-	RecipeID     uuid.UUID `json:"recipe_id" db:"recipe_id"`
-	IngredientID int64     `json:"ingredient_id" db:"ingredient_id"`
-	Quantity     *float64  `json:"quantity" db:"quantity"`
-	UnitID       *int64    `json:"unit_id" db:"unit_id"`
-	Note         *string   `json:"note" db:"note"`
+	RecipeID     int64    `json:"recipe_id" db:"recipe_id"`
+	IngredientID int64    `json:"ingredient_id" db:"ingredient_id"`
+	Quantity     *float64 `json:"quantity" db:"quantity"`
+	UnitID       *int64   `json:"unit_id" db:"unit_id"`
+	Note         *string  `json:"note" db:"note"`
 }
 
 // RecipeTag maps to the recipe_tags junction table.
@@ -92,15 +92,15 @@ type RecipeIngredient struct {
 // Like RecipeIngredient, this relationship is managed as a sub-resource of a
 // recipe and its endpoints are deferred.
 type RecipeTag struct {
-	RecipeID uuid.UUID `json:"recipe_id" db:"recipe_id"`
-	TagID    int64     `json:"tag_id" db:"tag_id"`
+	RecipeID int64 `json:"recipe_id" db:"recipe_id"`
+	TagID    int64 `json:"tag_id" db:"tag_id"`
 }
 
 // PastCookedRecipe maps to the past_cooked_recipes table.
 // There is at most one row per recipe (recipe_id is UNIQUE).
 type PastCookedRecipe struct {
 	ID           uuid.UUID `json:"id" db:"id"`
-	RecipeID     uuid.UUID `json:"recipe_id" db:"recipe_id"`
+	RecipeID     int64     `json:"recipe_id" db:"recipe_id"`
 	TimesCooked  int32     `json:"times_cooked" db:"times_cooked"`
 	LastCookedAt time.Time `json:"last_cooked_at" db:"last_cooked_at"`
 }

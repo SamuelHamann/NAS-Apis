@@ -12,7 +12,7 @@ import (
 
 // PastCookedInput holds the writable fields of a past_cooked_recipes row.
 type PastCookedInput struct {
-	RecipeID     uuid.UUID  // used in Create; not updated
+	RecipeID     int64      // used in Create; not updated
 	TimesCooked  int32      // must be >= 1
 	LastCookedAt *time.Time // nil → database uses now()
 }

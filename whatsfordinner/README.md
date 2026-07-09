@@ -145,6 +145,7 @@ whatsfordinner/
 │   │   ├── navbar.html      # {{define "navbar"}} - shared top nav
 │   │   ├── home.html        # GET / and /home
 │   │   ├── login.html       # GET /login
+│   │   ├── recipes.html     # GET /recipes (+ recipe_item partial)
 │   │   └── pantry.html      # GET /pantry (+ pantry_item / pantry_form partials)
 │   ├── Dockerfile           # 2-stage build: Go -> distroless
 │   ├── Makefile             # Common dev commands (run, build, test, ...)
@@ -280,6 +281,7 @@ button when no one is signed in.
 | POST   | `/users/{id}/update`   | Rename a user — form field: `username`                           |
 | POST   | `/users/{id}/delete`   | Delete a user (signs the browser out if it was the active one)   |
 | POST   | `/users/{id}/select`   | Sign in as this user (sets the `wfd_user_id` cookie)              |
+| GET    | `/recipes`             | Recipes page: grouped/coloured by pantry-relative readiness, with sort + tag filter |
 | GET    | `/pantry`              | Pantry page: grouped/coloured stock list with sort + tag filter  |
 | POST   | `/pantry`              | Add a pantry item (form)                                          |
 | POST   | `/pantry/{id}/update`  | Edit a pantry item (form)                                         |
@@ -289,6 +291,47 @@ There's no password: the users table is just "who is using this household
 device right now". `/login` doubles as both the sign-in picker and the user
 management screen — the navbar's **Change user** entry and **Sign in** button
 both lead there.
+
+### Recipes page (`GET /recipes`)
+
+Lists every recipe, colour-coded by how close it is to being cookable from
+the currently selected pantry (see the pantry-picker behaviour on the
+pantry page — it works the same way here).
+
+Cards:
+
+- **Green — Ready to cook** — every ingredient the recipe requires is
+  stocked in the selected pantry (`pantry_ingredients.quantity > 0`).
+- **Orange — Almost there (missing 4 or fewer)** — the recipe is missing
+  1–4 of its required ingredients.
+- Default — everything else, or every recipe when there is no selected
+  pantry.
+
+Each row shows the recipe name, its "missing N ingredient(s)" badge (or
+"Ready to cook"), servings/prep/cook times when present, and a strip of
+its tag chips.
+
+Query parameters (all optional; preserved across the toolbar so filter +
+sort choices survive page reloads and future CRUD redirects):
+
+| Parameter    | Values                              | Default        | Description                                              |
+| ------------ | ----------------------------------- | -------------- | -------------------------------------------------------- |
+| `pantry_id`  | integer                             | first pantry   | Which pantry to score recipes against                    |
+| `sort`       | `missing` \| `alphabetical`         | `missing`      | Grouping mode (see below)                                |
+| `tags`       | integer (repeat: `?tags=1&tags=2`)  | none           | Recipe must carry **every** listed tag ID (AND semantics — matches `/recipes/cookable`) |
+
+Grouping modes:
+
+- **`missing`** — three cards (Ready / Almost there / Everything else)
+  ordered by `missing_count ASC, name ASC` inside each card. Empty cards
+  are omitted. Requires a selected pantry; the option is disabled
+  otherwise.
+- **`alphabetical`** — a single "All recipes" card sorted by name. Each
+  row still carries its readiness so the green / orange tint survives
+  the sort mode change.
+
+Recipes with zero required ingredients are treated as trivially ready
+(`missing_count = 0`), matching `/recipes/cookable`'s semantics.
 
 ### Pantry page (`GET /pantry`)
 

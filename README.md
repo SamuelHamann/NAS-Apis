@@ -31,7 +31,8 @@ available while that migration is in progress.
 | POST      | `/pantry`                         | Add a pantry item (HTML form)        |
 | POST      | `/pantry/{id}/update`             | Edit a pantry item (HTML form)       |
 | POST      | `/pantry/{id}/delete`             | Delete a pantry item (HTML form)     |
-| CRUD      | `/recipes`, `/recipes/{id}`       | Recipes (UUID id)                    |
+| GET       | `/recipes`                        | Recipes page (HTML): grouped/coloured by pantry-relative readiness, with sort + tag filter |
+| CRUD      | `/recipes`, `/recipes/{id}`       | Recipes (bigint id)                    |
 | GET       | `/recipes/cookable`               | Recipes cookable from pantry stock   |
 | CRUD      | `/ingredients`, `/ingredients/{id}` | Canonical ingredients (integer id) |
 | CRUD      | `/units`, `/units/{id}`           | Measurement units (integer id)       |

@@ -603,6 +603,140 @@
     gap: 0.5rem;
   }
 
+  /* --- Recipes page ----------------------------------------------------
+
+     Recipes reuse the same card + colour-coded item pattern as the pantry
+     page (see .wfd-pantry-card / .wfd-pantry-item above) but with two
+     differences:
+
+       * A `success` tone (green) for "ready to cook" — where the pantry
+         only has danger/warning/default because expiration is negative
+         news.
+       * A rougher item body (title + tag chips + missing-count), so the
+         markup gets its own class rather than shoehorning into
+         .wfd-pantry-item.
+
+     Everything else — toolbar, tag filter, empty state — is shared. */
+
+  .wfd-status-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .wfd-status-card {
+    background: var(--wfd-surface);
+    border: 1px solid var(--wfd-border);
+    border-radius: var(--wfd-radius-lg);
+    box-shadow: var(--wfd-shadow);
+    overflow: hidden;
+  }
+  .wfd-status-card__title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.85rem 1rem;
+    font-size: 1rem;
+    font-weight: 700;
+    border-bottom: 1px solid var(--wfd-border);
+    background: var(--wfd-surface-alt);
+  }
+  .wfd-status-card__count {
+    margin-left: auto;
+    font-weight: 500;
+    color: var(--wfd-text-muted);
+    font-size: 0.85rem;
+  }
+
+  /* Green (success): "ready to cook". */
+  .wfd-status-card--success .wfd-status-card__title {
+    background: rgba(22, 163, 74, 0.14);
+    color: #146c37;
+    border-bottom-color: #16a34a;
+  }
+  @media (prefers-color-scheme: dark) {
+    .wfd-status-card--success .wfd-status-card__title {
+      background: rgba(74, 222, 128, 0.16);
+      color: #b7f1c8;
+      border-bottom-color: #4ade80;
+    }
+  }
+
+  /* Orange (warning): mirrors the pantry page's "expiring soon" swatch so
+     both pages share the visual language. */
+  .wfd-status-card--warning .wfd-status-card__title {
+    background: rgba(224, 154, 42, 0.14);
+    color: #b7691a;
+    border-bottom-color: #e09a2a;
+  }
+  @media (prefers-color-scheme: dark) {
+    .wfd-status-card--warning .wfd-status-card__title {
+      background: rgba(255, 179, 61, 0.18);
+      color: #ffcf7a;
+      border-bottom-color: #ffb33d;
+    }
+  }
+
+  .wfd-status-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem 0.75rem;
+    padding: 0.7rem 0.85rem;
+    border-top: 1px solid var(--wfd-border);
+  }
+  .wfd-status-item:first-of-type { border-top: none; }
+  .wfd-status-item__body {
+    flex: 1 1 220px;
+    min-width: 0;
+  }
+  .wfd-status-item__title {
+    font-weight: 600;
+    line-height: 1.25;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+  }
+  .wfd-status-item__meta {
+    margin-top: 0.15rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.75rem;
+    font-size: 0.8rem;
+    color: var(--wfd-text-muted);
+  }
+  .wfd-status-item__meta strong { color: var(--wfd-text); font-weight: 600; }
+
+  /* Non-interactive tag chips on the recipe row (distinct from the toolbar
+     filter chips, which are labels wrapping checkboxes). */
+  .wfd-status-item__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.35rem;
+  }
+  .wfd-tag-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    background: var(--wfd-surface-alt);
+    color: var(--wfd-text-muted);
+    border: 1px solid var(--wfd-border);
+    font-size: 0.72rem;
+    font-weight: 500;
+    line-height: 1.4;
+  }
+
+  /* Per-row background tints mirror the group tone so a "ready" recipe
+     stays visibly green even inside an "All recipes" alphabetical card. */
+  .wfd-status-item--success { background: rgba(22, 163, 74, 0.10); }
+  .wfd-status-item--warning { background: rgba(224, 154, 42, 0.14); }
+  @media (prefers-color-scheme: dark) {
+    .wfd-status-item--success { background: rgba(74, 222, 128, 0.14); }
+    .wfd-status-item--warning { background: rgba(255, 179, 61, 0.18); }
+  }
+
   /* "Scan receipt" only makes sense with a phone camera in hand: show it
      only on small, touch-primary viewports instead of gating on JS/UA
      sniffing, so it degrades gracefully everywhere. */
