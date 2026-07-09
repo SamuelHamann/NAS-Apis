@@ -100,9 +100,13 @@ func (s *Server) Routes() http.Handler {
 
 	mux.Handle("/", s.requireAPIKey(api))
 
-	templates := template.Must(template.ParseFiles(
-		"templates/index.html",
-	))
+	parsedTemplates, err := template.ParseFiles("templates/index.html")
+
+	if err != nil {
+		parsedTemplates, err = template.ParseFiles("./../../templates/index.html")
+	}
+
+	templates := template.Must(parsedTemplates, err)
 
 	helloHandler := func(w http.ResponseWriter, r *http.Request) {
 		data := map[string]interface{}{
