@@ -26,6 +26,10 @@ FROM gcr.io/distroless/static-debian12:nonroot
 
 WORKDIR /app
 COPY --from=build /out/whatsfordinner /app/whatsfordinner
+# The server loads *.html templates from disk at startup (see
+# internal/server/server.go -> Routes(), template.ParseGlob("templates/*.html")),
+# so they must ship alongside the binary rather than being embedded.
+COPY --from=build /src/templates /app/templates
 
 EXPOSE 8080
 USER nonroot:nonroot

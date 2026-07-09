@@ -1,0 +1,37 @@
+{{/*
+    Shared navbar, included at the top of <body> on every page:
+
+        {{template "navbar" .}}
+
+    Expects the page's data to (at least) embed handlers.PageData, which
+    provides CurrentUser. See internal/handlers/templates/page_data.go.
+*/}}
+{{define "navbar"}}
+<header class="wfd-navbar">
+  <div class="wfd-navbar__inner">
+    <a class="wfd-brand" href="/">
+      <span class="wfd-brand__logo" aria-hidden="true">🍲</span>
+      <span>What's for Dinner</span>
+    </a>
+
+    <div class="wfd-navbar__right">
+      {{if .SignedIn}}
+        <span class="wfd-user">{{.CurrentUser}}</span>
+
+        <details class="wfd-settings" id="settings-menu">
+          <summary class="wfd-icon-btn" aria-label="Settings" aria-haspopup="menu">
+            {{template "icon-settings"}}
+          </summary>
+          <div class="wfd-settings__panel" role="menu">
+            <a role="menuitem" href="/login">Change user</a>
+            <a role="menuitem" href="/settings/profile">Profile</a>
+            <a role="menuitem" href="/settings/admin">Admin page</a>
+          </div>
+        </details>
+      {{else}}
+        <a class="wfd-btn wfd-btn--primary" href="/login">Sign in</a>
+      {{end}}
+    </div>
+  </div>
+</header>
+{{end}}

@@ -98,3 +98,13 @@ type APIKey struct {
 	ID        uuid.UUID `json:"id" db:"id"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
+
+// User maps to the users table. There is no password: "signing in" just
+// means picking one of these from a list (see internal/handlers/templates'
+// session cookie helpers) since this app runs on a shared household device.
+type User struct {
+	ID        int64     `json:"id" db:"id"`
+	Username  string    `json:"username" db:"username"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>{{.Title}} · What's for Dinner</title>
+  {{template "styles" .}}
+</head>
+<body>
+  {{template "navbar" .}}
+
+  <main class="wfd-main wfd-container">
+    <h1 class="wfd-page-title">Hey {{if .SignedIn}}{{.CurrentUser}}{{else}}there{{end}} 👋</h1>
+    <p class="wfd-page-subtitle">What would you like to do?</p>
+
+    <div class="wfd-tiles">
+      <a class="wfd-tile" href="/recipes/quick">
+        <span class="wfd-tile__icon">{{template "icon-bolt"}}</span>
+        <span class="wfd-tile__label">Quick recipes</span>
+      </a>
+
+      <a class="wfd-tile" href="{{if .SignedIn}}#settings-menu{{else}}/login{{end}}">
+        <span class="wfd-tile__icon">{{template "icon-settings"}}</span>
+        <span class="wfd-tile__label">Settings</span>
+      </a>
+
+      <a class="wfd-tile wfd-tile--accent" href="/recipes">
+        <span class="wfd-tile__icon">{{template "icon-book"}}</span>
+        <span class="wfd-tile__label">Recipes</span>
+      </a>
+
+      <!-- TODO: once multiple pantries are supported, this should check how
+           many the current user has and, if more than one, open a picker
+           before navigating instead of linking straight to /pantry. -->
+      <a class="wfd-tile wfd-tile--accent" href="/pantry">
+        <span class="wfd-tile__icon">{{template "icon-crate"}}</span>
+        <span class="wfd-tile__label">Pantry</span>
+        <span class="wfd-tile__hint">Asks which one if you have several</span>
+      </a>
+
+      <a class="wfd-tile wfd-mobile-only" href="/scan-receipt">
+        <span class="wfd-tile__icon">{{template "icon-camera"}}</span>
+        <span class="wfd-tile__label">Scan receipt</span>
+      </a>
+    </div>
+  </main>
+</body>
+</html>

@@ -7,18 +7,26 @@ own folder and is independently buildable and deployable.
 
 | API                                | Language       | Description                                  | Status                                |
 | ---------------------------------- | -------------- | -------------------------------------------- | ------------------------------------- |
-| [whatsfordinner](./whatsfordinner) | Go, TypeScript | Helps decide what's for dinner (recipes etc) | 🚧 API + minimal TypeScript SPA (WIP) |
+| [whatsfordinner](./whatsfordinner) | Go | Helps decide what's for dinner (recipes etc) | 🚧 Server-rendered HTML UI + JSON API (WIP) |
 
 ## Endpoints overview
 
 ### whatsfordinner
 
-PostgreSQL-backed CRUD. Each resource below supports the standard set: `GET`
-(list), `POST` (create), and `GET` / `PUT` / `DELETE` on `/{id}`.
+The UI is being migrated from JSON responses to server-rendered HTML pages
+(see [`whatsfordinner/README.md`](./whatsfordinner/README.md)); the
+JSON-CRUD endpoints below are still the data API used internally and remain
+available while that migration is in progress.
 
 | Method(s) | Path(s)                           | Description                          |
 | --------- | --------------------------------- | ------------------------------------ |
 | GET       | `/health`, `/ready`               | Liveness and DB-readiness checks     |
+| GET       | `/`, `/home`                      | Home page (HTML)                     |
+| GET       | `/login`                          | Sign-in / user picker page (HTML)    |
+| POST      | `/users`                          | Create a user (HTML form)            |
+| POST      | `/users/{id}/update`              | Rename a user (HTML form)            |
+| POST      | `/users/{id}/delete`              | Delete a user (HTML form)            |
+| POST      | `/users/{id}/select`              | Sign in as this user (sets a cookie) |
 | CRUD      | `/recipes`, `/recipes/{id}`       | Recipes (UUID id)                    |
 | GET       | `/recipes/cookable`               | Recipes cookable from pantry stock   |
 | CRUD      | `/ingredients`, `/ingredients/{id}` | Canonical ingredients (integer id) |
@@ -29,11 +37,9 @@ PostgreSQL-backed CRUD. Each resource below supports the standard set: `GET`
 | CRUD      | `/past-cooked`, `/past-cooked/{id}` | Cooking history (UUID id)          |
 
 See [`whatsfordinner/README.md`](./whatsfordinner/README.md) for full details,
-request bodies and configuration. The companion SPA lives in
-[`whatsfordinner/frontend/`](./whatsfordinner/frontend) — a tiny TypeScript +
-esbuild app (no framework) that is **embedded into the API binary** via
-`//go:embed` and served from the same origin, so the whole stack ships as a
-single container. See [`whatsfordinner/frontend/README.md`](./whatsfordinner/frontend/README.md).
+request bodies and configuration. The UI (navbar, home page, sign-in) is
+rendered server-side with Go's `html/template` and ships inside the API
+binary itself — no separate frontend build or container.
 
 ## Conventions
 

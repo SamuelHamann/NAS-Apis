@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>{{.Title}} · What's for Dinner</title>
+  {{template "styles" .}}
+</head>
+<body>
+  {{template "navbar" .}}
+
+  <main class="wfd-main wfd-container">
+    <h1 class="wfd-page-title">Who's cooking?</h1>
+    <p class="wfd-page-subtitle">Pick your profile, or create a new one below.</p>
+
+    {{if .Error}}
+    <p class="wfd-error-banner">{{.Error}}</p>
+    {{end}}
+
+    <ul class="wfd-list">
+      {{range .Users}}
+      <li class="wfd-list-row">
+        <form method="post" action="/users/{{.ID}}/select" class="wfd-list-row__main">
+          <button type="submit" class="wfd-list-row__name">{{.Username}}</button>
+        </form>
+
+        <form method="post" action="/users/{{.ID}}/delete" class="wfd-list-row__delete" onsubmit="return confirm('Delete this user?');">
+          <button type="submit" class="wfd-icon-btn" aria-label="Delete {{.Username}}">{{template "icon-trash"}}</button>
+        </form>
+
+        <details class="wfd-list-row__edit">
+          <summary class="wfd-icon-btn" aria-label="Edit {{.Username}}">{{template "icon-pencil"}}</summary>
+          <form method="post" action="/users/{{.ID}}/update" class="wfd-inline-form">
+            <input type="text" name="username" value="{{.Username}}" required maxlength="100" />
+            <button type="submit" class="wfd-btn wfd-btn--primary">Save</button>
+          </form>
+        </details>
+      </li>
+      {{else}}
+      <p class="wfd-list-empty">No users yet — create the first one below.</p>
+      {{end}}
+    </ul>
+
+    <details class="wfd-create">
+      <summary class="wfd-btn wfd-btn--primary">+ Create new user</summary>
+      <form method="post" action="/users" class="wfd-inline-form">
+        <input type="text" name="username" placeholder="Username" required maxlength="100" />
+        <button type="submit" class="wfd-btn wfd-btn--primary">Create</button>
+      </form>
+    </details>
+  </main>
+</body>
+</html>

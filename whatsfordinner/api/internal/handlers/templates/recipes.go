@@ -54,7 +54,14 @@ func (h *Handler) ListRecipes(w http.ResponseWriter, r *http.Request) {
 		h.respondStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, recipes)
+
+	ts, ok := h.templatesCache["past_cooked.html"]
+	if !ok {
+		http.Error(w, "Template not found", http.StatusInternalServerError)
+		return
+	}
+	ts.Execute(w, recipes)
+
 }
 
 // CreateRecipe handles POST /recipes.
