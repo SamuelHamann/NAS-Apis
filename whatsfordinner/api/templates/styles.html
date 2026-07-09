@@ -381,6 +381,228 @@
 
   .wfd-create { margin-top: 0.25rem; }
 
+  /* --- Pantry page ------------------------------------------------------ */
+
+  /* Two-row toolbar: pantry picker + primary "add item" button on top,
+     sort + tag filter below. Wraps cleanly on narrow phones. */
+  .wfd-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+  }
+  .wfd-toolbar__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .wfd-toolbar__row--between { justify-content: space-between; }
+  .wfd-toolbar select {
+    height: 44px;
+    padding-inline: 0.6rem;
+    border-radius: var(--wfd-radius-sm);
+    border: 1px solid var(--wfd-border);
+    background: var(--wfd-surface);
+    color: var(--wfd-text);
+    font: inherit;
+    font-size: 0.95rem;
+  }
+  .wfd-toolbar__group-label {
+    font-size: 0.85rem;
+    color: var(--wfd-text-muted);
+    font-weight: 600;
+  }
+
+  /* Tag filter: horizontally-scrolling row of pill-shaped checkboxes. */
+  .wfd-tag-filter {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding: 0.35rem 0;
+  }
+  .wfd-tag-filter__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.75rem;
+    border: 1px solid var(--wfd-border);
+    border-radius: 999px;
+    cursor: pointer;
+    background: var(--wfd-surface);
+    color: var(--wfd-text);
+    font-size: 0.85rem;
+    font-weight: 500;
+    white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .wfd-tag-filter__chip input {
+    /* Hide the actual checkbox; keep it a11y-visible for keyboard nav via
+       :focus-within on the label. */
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .wfd-tag-filter__chip:has(input:checked) {
+    background: var(--wfd-primary);
+    color: var(--wfd-primary-contrast);
+    border-color: var(--wfd-primary);
+  }
+  .wfd-tag-filter__chip:focus-within {
+    outline: 2px solid var(--wfd-primary);
+    outline-offset: 2px;
+  }
+
+  /* Grouped cards + colour-coded items. Each card is a titled container
+     that holds a stack of item rows. Tone drives the card header (subtle)
+     and the individual item background (stronger). */
+  .wfd-pantry-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .wfd-pantry-card {
+    background: var(--wfd-surface);
+    border: 1px solid var(--wfd-border);
+    border-radius: var(--wfd-radius-lg);
+    box-shadow: var(--wfd-shadow);
+    overflow: hidden;
+  }
+  .wfd-pantry-card__title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.85rem 1rem;
+    font-size: 1rem;
+    font-weight: 700;
+    border-bottom: 1px solid var(--wfd-border);
+    background: var(--wfd-surface-alt);
+  }
+  .wfd-pantry-card--danger .wfd-pantry-card__title {
+    background: var(--wfd-danger-soft);
+    color: var(--wfd-danger);
+    border-bottom-color: var(--wfd-danger);
+  }
+  .wfd-pantry-card--warning .wfd-pantry-card__title {
+    background: rgba(224, 154, 42, 0.14);
+    color: #b7691a;
+    border-bottom-color: #e09a2a;
+  }
+  @media (prefers-color-scheme: dark) {
+    .wfd-pantry-card--warning .wfd-pantry-card__title {
+      background: rgba(255, 179, 61, 0.18);
+      color: #ffcf7a;
+      border-bottom-color: #ffb33d;
+    }
+  }
+  .wfd-pantry-card__count {
+    margin-left: auto;
+    font-weight: 500;
+    color: var(--wfd-text-muted);
+    font-size: 0.85rem;
+  }
+
+  .wfd-pantry-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.7rem 0.85rem;
+    border-top: 1px solid var(--wfd-border);
+  }
+  .wfd-pantry-item:first-child { border-top: none; }
+  .wfd-pantry-item__body {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .wfd-pantry-item__title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-weight: 600;
+    line-height: 1.25;
+  }
+  .wfd-pantry-item__qty {
+    font-weight: 500;
+    color: var(--wfd-text-muted);
+    font-size: 0.9rem;
+  }
+  .wfd-pantry-item__meta {
+    margin-top: 0.15rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    font-size: 0.8rem;
+    color: var(--wfd-text-muted);
+  }
+  .wfd-pantry-item__meta strong { color: var(--wfd-text); font-weight: 600; }
+
+  /* Per-item colour tint mirrors the group card's tone, so that a red /
+     orange item is unmistakable even inside the "by location" grouping. */
+  .wfd-pantry-item--expired {
+    background: var(--wfd-danger-soft);
+  }
+  .wfd-pantry-item--soon {
+    background: rgba(224, 154, 42, 0.14);
+  }
+  @media (prefers-color-scheme: dark) {
+    .wfd-pantry-item--soon { background: rgba(255, 179, 61, 0.18); }
+  }
+
+  .wfd-pantry-item__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.1rem;
+    margin-left: auto;
+  }
+  .wfd-pantry-item__edit[open] { flex-basis: 100%; margin-top: 0.5rem; }
+
+  /* Inline edit / create form: 2-column grid on wider viewports, single
+     column on phones. The inline-form base already handles inputs. */
+  .wfd-pantry-form {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
+    padding: 0.75rem 0.85rem;
+    background: var(--wfd-bg);
+    border-top: 1px solid var(--wfd-border);
+  }
+  @media (min-width: 560px) {
+    .wfd-pantry-form { grid-template-columns: repeat(2, 1fr); }
+    .wfd-pantry-form__wide { grid-column: 1 / -1; }
+  }
+  .wfd-pantry-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.8rem;
+    color: var(--wfd-text-muted);
+    font-weight: 600;
+  }
+  .wfd-pantry-form input,
+  .wfd-pantry-form select {
+    height: 44px;
+    padding-inline: 0.7rem;
+    border-radius: var(--wfd-radius-sm);
+    border: 1px solid var(--wfd-border);
+    background: var(--wfd-surface);
+    color: var(--wfd-text);
+    font: inherit;
+    font-size: 1rem;
+  }
+  .wfd-pantry-form input:focus-visible,
+  .wfd-pantry-form select:focus-visible {
+    outline: 2px solid var(--wfd-primary);
+    outline-offset: 1px;
+  }
+  .wfd-pantry-form__actions {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+
   /* "Scan receipt" only makes sense with a phone camera in hand: show it
      only on small, touch-primary viewports instead of gating on JS/UA
      sniffing, so it degrades gracefully everywhere. */

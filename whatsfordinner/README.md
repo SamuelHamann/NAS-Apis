@@ -144,7 +144,8 @@ whatsfordinner/
 │   │   ├── icons.html       # {{define "icon-*"}} - shared inline SVG icons
 │   │   ├── navbar.html      # {{define "navbar"}} - shared top nav
 │   │   ├── home.html        # GET / and /home
-│   │   └── login.html       # GET /login
+│   │   ├── login.html       # GET /login
+│   │   └── pantry.html      # GET /pantry (+ pantry_item / pantry_form partials)
 │   ├── Dockerfile           # 2-stage build: Go -> distroless
 │   ├── Makefile             # Common dev commands (run, build, test, ...)
 │   ├── go.mod
@@ -186,9 +187,46 @@ Structs live in `internal/models`. Nullable columns are pointers and serialize t
   `created_at`.
 - **Unit** (`units`, bigint id) — `name` (required, unique, case-insensitive), `created_at`.
 - **Tag** (`tags`, bigint id) — `name` (required, unique, case-insensitive).
-- **PantryIngredient** (`pantry_ingredients`, UUID id) — `ingredient_id` (required, unique),
-  `quantity` (required, ≥0), `unit_id` (required), `note`, `is_quantified`
-  (default `true`), `location_id` (optional FK → `food_locations`), `updated_at`.
+- **PantryIngredient** (`pantry_ingredients`, UUID id) — `pantry_id` (required, FK
+  → `pantry`), `ingredient_id` (required, unique), `quantity` (required, ≥0),
+  `unit_id` (required), `note`, `is_quantified` (default `true`),
+  `location_id` (optional FK → `food_locations`), `expiration_date`
+  (optional; drives the color-coded grouping on the pantry page),
+  `updated_at`.
+- **Pantry** (`pantry`, bigint id) — `name` (required), `created_at`,
+  `updated_at`. A container for pantry ingredients ("Main kitchen", "Garage
+  freezer", ...). Users are linked to the pantries they can see through the
+  `user_pantry` join table — the `/pantry` page's picker shows only those
+  memberships when signed in, falling back to every pantry when either no
+  one is signed in or the user has zero memberships yet (bootstrap).
+
+  **The `pantry` and `user_pantry` tables and the `pantry_id` /
+  `expiration_date` columns on `pantry_ingredients` are not yet part of the
+  schema provisioned by
+  [NAS-Images/postgres](https://github.com/SamuelHamann/NAS-Images/tree/main/postgres)
+  — add them there before deploying this version:**
+
+  ```sql
+  CREATE TABLE IF NOT EXISTS pantry (
+      id         bigserial   PRIMARY KEY,
+      name       text        NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+  );
+
+  CREATE TABLE IF NOT EXISTS user_pantry (
+      id        bigserial PRIMARY KEY,
+      id_pantry bigint    NOT NULL REFERENCES pantry(id) ON DELETE CASCADE,
+      id_user   bigint    NOT NULL REFERENCES users(id)  ON DELETE CASCADE
+  );
+
+  ALTER TABLE pantry_ingredients
+      ADD COLUMN IF NOT EXISTS pantry_id       bigint REFERENCES pantry(id) ON DELETE CASCADE,
+      ADD COLUMN IF NOT EXISTS expiration_date date;
+
+  -- Backfill / enforce NOT NULL once every row has a pantry.
+  ALTER TABLE pantry_ingredients ALTER COLUMN pantry_id SET NOT NULL;
+  ```
 - **User** (`users`, bigint id) — `username` (required), `created_at`, `updated_at`.
   There is no password: picking a user at `/login` (stored in a cookie) is the
   entire "sign-in" flow, since this runs on a shared household device. **The
@@ -242,11 +280,69 @@ button when no one is signed in.
 | POST   | `/users/{id}/update`   | Rename a user — form field: `username`                           |
 | POST   | `/users/{id}/delete`   | Delete a user (signs the browser out if it was the active one)   |
 | POST   | `/users/{id}/select`   | Sign in as this user (sets the `wfd_user_id` cookie)              |
+| GET    | `/pantry`              | Pantry page: grouped/coloured stock list with sort + tag filter  |
+| POST   | `/pantry`              | Add a pantry item (form)                                          |
+| POST   | `/pantry/{id}/update`  | Edit a pantry item (form)                                         |
+| POST   | `/pantry/{id}/delete`  | Delete a pantry item (form)                                       |
 
 There's no password: the users table is just "who is using this household
 device right now". `/login` doubles as both the sign-in picker and the user
 management screen — the navbar's **Change user** entry and **Sign in** button
 both lead there.
+
+### Pantry page (`GET /pantry`)
+
+Shows the contents of the currently selected pantry. The picker at the top
+of the page is scoped to the signed-in user via the `user_pantry` join
+table; when no one is signed in or the user has zero memberships, every
+pantry is shown as a bootstrap fallback.
+
+Every item is colour-coded by expiration:
+
+- **Red** — already expired.
+- **Orange** — expires today or in the next 2 days.
+- Default — anything else (or no expiration on record).
+
+Query parameters (all optional, all preserved when submitting the CRUD forms
+so the view sticks after a redirect):
+
+| Parameter    | Values                                          | Default        | Description                                            |
+| ------------ | ----------------------------------------------- | -------------- | ------------------------------------------------------ |
+| `pantry_id`  | integer                                         | first pantry   | Which pantry to display                                |
+| `sort`       | `expiration` \| `alphabetical` \| `location`    | `expiration`   | Grouping mode (see below)                              |
+| `tags`       | integer (repeat: `?tags=1&tags=2`)              | none           | Show only items whose ingredient appears in a recipe carrying **any** of these tag IDs |
+| `error`      | string                                          | none           | Flash message rendered as an error banner (set by the CRUD handlers on redirect) |
+
+Grouping modes:
+
+- **`expiration`** — up to three cards: **Expired** (red header),
+  **Expiring in the next 2 days** (orange header) and **Everything else**.
+  Empty cards are omitted.
+- **`alphabetical`** — a single "All items" card sorted by ingredient name.
+- **`location`** — one card per `food_locations` row (alphabetical), plus an
+  "Unassigned" card pinned to the bottom.
+
+The **secondary sort inside every card** is always `expiration_date ASC`
+(NULLs last), then ingredient name. Row colouring is applied per-item
+regardless of the grouping mode, so an expired item pinned to its `Fridge`
+card in location mode is still rendered in red.
+
+The tag filter chips are populated from the `tags` table and use OR
+semantics (matching any selected tag counts).
+
+### Template FuncMap
+
+Every page template is parsed with a small shared FuncMap
+(`internal/handlers/templates/template_funcs.go`, exposed as `TemplateFuncs()`
+so both the production template loader in `internal/server` and the tests use
+the same set):
+
+- `dict "k" v "k2" v2 ...` — build ad-hoc maps to pass multiple values to a
+  sub-template, e.g.
+  `{{template "pantry_item" (dict "Item" . "PantryPageData" $)}}`.
+- `deref *T` — dereference a pointer field (`*string`, `*int64`, ...) so
+  templates can compare/print it without needing extra Go-side helpers on
+  every model.
 
 ### Recipes (`id` = UUID)
 
@@ -372,7 +468,7 @@ curl -X PUT http://localhost:8080/past-cooked/<id> \
 ```sh
 curl -X POST http://localhost:8080/pantry \
   -H 'Content-Type: application/json' \
-  -d '{"ingredient_id":1,"quantity":750,"unit_id":2,"note":"in the cupboard"}'
+  -d '{"pantry_id":1,"ingredient_id":1,"quantity":750,"unit_id":2,"note":"in the cupboard","expiration_date":"2026-07-31"}'
 ```
 
 > **Deferred (more complex endpoints):** managing a recipe's ingredients and tags

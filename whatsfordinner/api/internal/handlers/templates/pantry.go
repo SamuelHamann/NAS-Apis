@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/SamuelHamann/NAS-Apis/whatsfordinner/internal/store"
 )
@@ -9,16 +10,20 @@ import (
 // pantryRequest is the JSON body accepted when creating or updating a pantry
 // stock entry.
 type pantryRequest struct {
-	IngredientID int64    `json:"ingredient_id"`
-	Quantity     *float64 `json:"quantity"`
-	UnitID       int64    `json:"unit_id"`
-	Note         *string  `json:"note"`
-	IsQuantified *bool    `json:"is_quantified"`
-	LocationID   *int64   `json:"location_id"` // optional — food_locations FK
+	PantryID       int64      `json:"pantry_id"`
+	IngredientID   int64      `json:"ingredient_id"`
+	Quantity       *float64   `json:"quantity"`
+	UnitID         int64      `json:"unit_id"`
+	Note           *string    `json:"note"`
+	IsQuantified   *bool      `json:"is_quantified"`
+	LocationID     *int64     `json:"location_id"`     // optional — food_locations FK
+	ExpirationDate *time.Time `json:"expiration_date"` // optional — YYYY-MM-DD in JSON
 }
 
 func (req pantryRequest) validate() string {
 	switch {
+	case req.PantryID <= 0:
+		return "pantry_id is required"
 	case req.IngredientID <= 0:
 		return "ingredient_id is required"
 	case req.UnitID <= 0:
@@ -38,12 +43,14 @@ func (req pantryRequest) toInput() store.PantryInput {
 		isQuantified = *req.IsQuantified
 	}
 	return store.PantryInput{
-		IngredientID: req.IngredientID,
-		Quantity:     *req.Quantity,
-		UnitID:       req.UnitID,
-		Note:         req.Note,
-		IsQuantified: isQuantified,
-		LocationID:   req.LocationID,
+		PantryID:       req.PantryID,
+		IngredientID:   req.IngredientID,
+		Quantity:       *req.Quantity,
+		UnitID:         req.UnitID,
+		Note:           req.Note,
+		IsQuantified:   isQuantified,
+		LocationID:     req.LocationID,
+		ExpirationDate: req.ExpirationDate,
 	}
 }
 

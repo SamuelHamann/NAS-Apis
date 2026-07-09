@@ -45,14 +45,27 @@ type Tag struct {
 
 // PantryIngredient maps to the pantry_ingredients table (current home stock).
 type PantryIngredient struct {
-	ID           uuid.UUID `json:"id" db:"id"`
-	IngredientID int64     `json:"ingredient_id" db:"ingredient_id"`
-	Quantity     float64   `json:"quantity" db:"quantity"`
-	UnitID       int64     `json:"unit_id" db:"unit_id"`
-	Note         *string   `json:"note" db:"note"`
-	IsQuantified bool      `json:"is_quantified" db:"is_quantified"`
-	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
-	LocationID   *int64    `json:"location_id" db:"location_id"`
+	ID             uuid.UUID  `json:"id" db:"id"`
+	PantryID       int64      `json:"pantry_id" db:"pantry_id"`
+	IngredientID   int64      `json:"ingredient_id" db:"ingredient_id"`
+	Quantity       float64    `json:"quantity" db:"quantity"`
+	UnitID         int64      `json:"unit_id" db:"unit_id"`
+	Note           *string    `json:"note" db:"note"`
+	IsQuantified   bool       `json:"is_quantified" db:"is_quantified"`
+	LocationID     *int64     `json:"location_id" db:"location_id"`
+	ExpirationDate *time.Time `json:"expiration_date" db:"expiration_date"`
+	UpdatedAt      time.Time  `json:"updated_at" db:"updated_at"`
+}
+
+// Pantry maps to the pantry table. A Pantry is a named collection of
+// ingredients (e.g. "Main kitchen", "Cabin fridge"); every PantryIngredient
+// belongs to exactly one Pantry. Users are linked to the pantries they can
+// see through the user_pantry join table.
+type Pantry struct {
+	ID        int64     `json:"id" db:"id"`
+	Name      string    `json:"name" db:"name"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // FoodLocation maps to the food_locations table (fridge, freezer, pantry, …).

@@ -12,11 +12,13 @@ import (
 
 // parseTestTemplates loads the real templates/*.html files the exact same
 // way internal/server.Routes does, so this test exercises the templates
-// that actually ship with the app instead of a hand-crafted fixture.
+// that actually ship with the app instead of a hand-crafted fixture. It
+// registers the same FuncMap (dict, deref) too — templates/pantry.html
+// depends on both.
 func parseTestTemplates(t *testing.T) map[string]*template.Template {
 	t.Helper()
 
-	tmpl, err := template.ParseGlob("../../../templates/*.html")
+	tmpl, err := template.New("").Funcs(TemplateFuncs()).ParseGlob("../../../templates/*.html")
 	if err != nil {
 		t.Fatalf("parse templates: %v", err)
 	}

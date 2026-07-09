@@ -38,9 +38,13 @@ func New(cfg config.Config, logger *slog.Logger, store *store.Store) *Server {
 //     callers must supply a valid UUID in the X-Api-Key header.
 func (s *Server) Routes() http.Handler {
 
-	parsedTemplates, err := template.ParseGlob("templates/*.html")
+	// Templates share a small FuncMap (dict, deref) — see
+	// apiHandlers.TemplateFuncs for the full list and why they exist.
+	funcs := apiHandlers.TemplateFuncs()
+
+	parsedTemplates, err := template.New("").Funcs(funcs).ParseGlob("templates/*.html")
 	if err != nil {
-		parsedTemplates, err = template.ParseGlob("./../../templates/*.html")
+		parsedTemplates, err = template.New("").Funcs(funcs).ParseGlob("./../../templates/*.html")
 	}
 
 	templates := template.Must(parsedTemplates, err)
@@ -128,6 +132,15 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /users/{id}/update", h.UpdateUser)
 	mux.HandleFunc("POST /users/{id}/delete", h.DeleteUser)
 	mux.HandleFunc("POST /users/{id}/select", h.SelectUser)
+
+	// Pantry page: grouped, colour-coded list of the selected pantry's
+	// contents, with sort/filter controls and inline CRUD via HTML forms.
+	// The picker at ?pantry_id=... is a placeholder until a session-backed
+	// "current pantry" is stored (multi-pantry picker on the home page).
+	mux.HandleFunc("GET /pantry", h.PantryPage)
+	mux.HandleFunc("POST /pantry", h.PantryCreate)
+	mux.HandleFunc("POST /pantry/{id}/update", h.PantryUpdate)
+	mux.HandleFunc("POST /pantry/{id}/delete", h.PantryDelete)
 
 	return s.withMiddleware(mux)
 }

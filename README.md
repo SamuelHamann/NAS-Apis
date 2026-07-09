@@ -27,13 +27,16 @@ available while that migration is in progress.
 | POST      | `/users/{id}/update`              | Rename a user (HTML form)            |
 | POST      | `/users/{id}/delete`              | Delete a user (HTML form)            |
 | POST      | `/users/{id}/select`              | Sign in as this user (sets a cookie) |
+| GET       | `/pantry`                         | Pantry page (HTML): grouped/coloured stock with sort + tag filter |
+| POST      | `/pantry`                         | Add a pantry item (HTML form)        |
+| POST      | `/pantry/{id}/update`             | Edit a pantry item (HTML form)       |
+| POST      | `/pantry/{id}/delete`             | Delete a pantry item (HTML form)     |
 | CRUD      | `/recipes`, `/recipes/{id}`       | Recipes (UUID id)                    |
 | GET       | `/recipes/cookable`               | Recipes cookable from pantry stock   |
 | CRUD      | `/ingredients`, `/ingredients/{id}` | Canonical ingredients (integer id) |
 | CRUD      | `/units`, `/units/{id}`           | Measurement units (integer id)       |
 | CRUD      | `/locations`, `/locations/{id}`   | Food storage locations (integer id)  |
 | CRUD      | `/tags`, `/tags/{id}`             | Recipe tags (integer id)             |
-| CRUD      | `/pantry`, `/pantry/{id}`         | Home pantry stock (UUID id)          |
 | CRUD      | `/past-cooked`, `/past-cooked/{id}` | Cooking history (UUID id)          |
 
 See [`whatsfordinner/README.md`](./whatsfordinner/README.md) for full details,

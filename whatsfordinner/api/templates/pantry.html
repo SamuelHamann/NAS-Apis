@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>{{.Title}} · What's for Dinner</title>
+  {{template "styles" .}}
+</head>
+<body>
+  {{template "navbar" .}}
+
+  <main class="wfd-main wfd-container">
+    <h1 class="wfd-page-title">Pantry</h1>
+    {{if .SelectedPantry}}
+      <p class="wfd-page-subtitle">{{.SelectedPantry.Name}} · {{len .Cards}} card{{if ne (len .Cards) 1}}s{{end}}</p>
+    {{else}}
+      <p class="wfd-page-subtitle">No pantry yet — create one to start tracking your stock.</p>
+    {{end}}
+
+    {{if .Error}}
+    <p class="wfd-error-banner">{{.Error}}</p>
+    {{end}}
+
+    {{/* --- Toolbar: pantry picker, sort, tag filter, add-item ----------
+
+         The filter form (id="pantry-view") is intentionally a zero-content
+         sibling of the visible toolbar rather than wrapping them. Nesting a
+         <form> inside another <form> is invalid HTML — the parser silently
+         drops the inner start tag but keeps its </form>, which closes the
+         outer form early. That used to strand the Sort and Tag inputs
+         with no owning form (this.form was null on change) and merge the
+         Add-item form's fields into the toolbar's URL. With this layout
+         every filter input opts back in via `form="pantry-view"`, and the
+         Add-item block is free to be its own POST form. */}}
+    <form id="pantry-view" method="get" action="/pantry" hidden></form>
+
+    <div class="wfd-toolbar">
+      <div class="wfd-toolbar__row wfd-toolbar__row--between">
+        {{if gt (len .Pantries) 1}}
+        <label class="wfd-toolbar__group-label" style="display:flex;align-items:center;gap:0.5rem;">
+          Pantry
+          <select name="pantry_id" form="pantry-view" onchange="this.form.submit()">
+            {{range .Pantries}}
+              <option value="{{.ID}}" {{if and $.SelectedPantry (eq $.SelectedPantry.ID .ID)}}selected{{end}}>{{.Name}}</option>
+            {{end}}
+          </select>
+        </label>
+        {{else if .SelectedPantry}}
+        {{/* Only one pantry — keep its id in a hidden field so submitting
+             filter/sort changes doesn't drop us to the fallback pantry. */}}
+        <input type="hidden" name="pantry_id" form="pantry-view" value="{{.SelectedPantry.ID}}" />
+        <span class="wfd-toolbar__group-label">Pantry: {{.SelectedPantry.Name}}</span>
+        {{end}}
+
+        {{if .SelectedPantry}}
+        <details class="wfd-create">
+          <summary class="wfd-btn wfd-btn--primary">
+            {{template "icon-plus"}}
+            <span>Add item</span>
+          </summary>
+          {{template "pantry_form" (dict "Action" "/pantry" "PantryPageData" . "Item" nil)}}
+        </details>
+        {{end}}
+      </div>
+
+      <div class="wfd-toolbar__row">
+        <label class="wfd-toolbar__group-label" style="display:flex;align-items:center;gap:0.5rem;">
+          Sort by
+          <select name="sort" form="pantry-view" onchange="this.form.submit()">
+            <option value="expiration"   {{if eq (printf "%s" .Sort) "expiration"}}selected{{end}}>Expiration</option>
+            <option value="alphabetical" {{if eq (printf "%s" .Sort) "alphabetical"}}selected{{end}}>Alphabetical</option>
+            <option value="location"     {{if eq (printf "%s" .Sort) "location"}}selected{{end}}>Location</option>
+          </select>
+        </label>
+      </div>
+
+      {{if .Tags}}
+      <div class="wfd-toolbar__row">
+        <span class="wfd-toolbar__group-label" style="display:inline-flex;align-items:center;gap:0.35rem;">
+          {{template "icon-filter"}} Tags
+        </span>
+        <div class="wfd-tag-filter">
+          {{range .Tags}}
+          <label class="wfd-tag-filter__chip">
+            <input type="checkbox" name="tags" value="{{.ID}}" form="pantry-view" {{if index $.SelectedTagIDs .ID}}checked{{end}} onchange="this.form.submit()" />
+            <span>{{.Name}}</span>
+          </label>
+          {{end}}
+        </div>
+      </div>
+      {{end}}
+    </div>
+
+    {{/* --- Content --------------------------------------------------- */}}
+    {{if not .SelectedPantry}}
+      <p class="wfd-list-empty">Create a pantry in the database first (see the schema docs).</p>
+    {{else if not .Cards}}
+      <p class="wfd-list-empty">
+        {{if .SelectedTagIDs}}No pantry items match this tag filter.
+        {{else}}Your pantry is empty — use “Add item” to add your first entry.{{end}}
+      </p>
+    {{else}}
+      <div class="wfd-pantry-cards">
+        {{range .Cards}}
+        <section class="wfd-pantry-card{{if eq .Tone "danger"}} wfd-pantry-card--danger{{else if eq .Tone "warning"}} wfd-pantry-card--warning{{end}}">
+          <header class="wfd-pantry-card__title">
+            <span>{{.Title}}</span>
+            <span class="wfd-pantry-card__count">{{len .Items}} item{{if ne (len .Items) 1}}s{{end}}</span>
+          </header>
+          {{range .Items}}
+            {{template "pantry_item" (dict "Item" . "PantryPageData" $)}}
+          {{end}}
+        </section>
+        {{end}}
+      </div>
+    {{end}}
+  </main>
+</body>
+</html>
+
+{{/* -----------------------------------------------------------------------
+     One pantry item row + inline edit form. Expects a dict with:
+        Item            (PantryItemView)
+        PantryPageData  (the outer .)
+   ----------------------------------------------------------------------- */}}
+{{define "pantry_item"}}
+{{ $item := .Item }}
+{{ $data := .PantryPageData }}
+<div class="wfd-pantry-item{{if eq (printf "%s" $item.ExpirationClass) "expired"}} wfd-pantry-item--expired{{else if eq (printf "%s" $item.ExpirationClass) "soon"}} wfd-pantry-item--soon{{end}}">
+  <div class="wfd-pantry-item__body">
+    <div class="wfd-pantry-item__title">
+      <span>{{$item.IngredientName}}</span>
+      <span class="wfd-pantry-item__qty">{{$item.Quantity}} {{$item.UnitName}}</span>
+    </div>
+    <div class="wfd-pantry-item__meta">
+      {{if $item.ExpirationDate}}
+        <span>Expires <strong>{{$item.ExpirationDate.Format "Jan 2, 2006"}}</strong></span>
+      {{end}}
+      {{if $item.LocationName}}
+        <span>Location <strong>{{$item.LocationName}}</strong></span>
+      {{end}}
+      {{if $item.Note}}
+        <span>Note <strong>{{$item.Note}}</strong></span>
+      {{end}}
+    </div>
+  </div>
+
+  <div class="wfd-pantry-item__actions">
+    <form method="post" action="/pantry/{{$item.ID}}/delete" onsubmit="return confirm('Delete this pantry item?');">
+      <input type="hidden" name="pantry_id" value="{{$data.SelectedPantry.ID}}" />
+      <input type="hidden" name="sort" value="{{$data.Sort}}" />
+      {{range $tid, $on := $data.SelectedTagIDs}}{{if $on}}<input type="hidden" name="view_tags" value="{{$tid}}" />{{end}}{{end}}
+      <button type="submit" class="wfd-icon-btn" aria-label="Delete {{$item.IngredientName}}">{{template "icon-trash"}}</button>
+    </form>
+
+    <details class="wfd-pantry-item__edit">
+      <summary class="wfd-icon-btn" aria-label="Edit {{$item.IngredientName}}">{{template "icon-pencil"}}</summary>
+      {{template "pantry_form" (dict "Action" (printf "/pantry/%s/update" $item.ID) "PantryPageData" $data "Item" $item)}}
+    </details>
+  </div>
+</div>
+{{end}}
+
+{{/* -----------------------------------------------------------------------
+     Create/update form for a pantry entry. Expects a dict with:
+        Action          (form target URL)
+        PantryPageData  (the outer .; used to render the option lists and to
+                         carry the current pantry_id / sort / tags forward)
+        Item            (a PantryItemView pointer, or nil for the create form)
+   ----------------------------------------------------------------------- */}}
+{{define "pantry_form"}}
+{{ $action := .Action }}
+{{ $data := .PantryPageData }}
+{{ $item := .Item }}
+<form method="post" action="{{$action}}" class="wfd-pantry-form">
+  <input type="hidden" name="pantry_id" value="{{$data.SelectedPantry.ID}}" />
+  <input type="hidden" name="sort" value="{{$data.Sort}}" />
+  {{range $tid, $on := $data.SelectedTagIDs}}{{if $on}}<input type="hidden" name="view_tags" value="{{$tid}}" />{{end}}{{end}}
+
+  <label>
+    Ingredient
+    <select name="ingredient_id" required>
+      <option value="" disabled {{if not $item}}selected{{end}}>Pick an ingredient…</option>
+      {{range $data.Ingredients}}
+        <option value="{{.ID}}" {{if and $item (eq $item.IngredientID .ID)}}selected{{end}}>{{.Name}}</option>
+      {{end}}
+    </select>
+  </label>
+
+  <label>
+    Quantity
+    <input type="number" name="quantity" step="0.001" min="0" required
+           value="{{if $item}}{{$item.Quantity}}{{end}}" />
+  </label>
+
+  <label>
+    Unit
+    <select name="unit_id" required>
+      <option value="" disabled {{if not $item}}selected{{end}}>Pick a unit…</option>
+      {{range $data.Units}}
+        <option value="{{.ID}}" {{if and $item (eq $item.UnitID .ID)}}selected{{end}}>{{.Name}}</option>
+      {{end}}
+    </select>
+  </label>
+
+  <label>
+    Location
+    <select name="location_id">
+      <option value="">— none —</option>
+      {{range $data.Locations}}
+        <option value="{{.ID}}" {{if and $item $item.LocationID (eq (deref $item.LocationID) .ID)}}selected{{end}}>{{.Name}}</option>
+      {{end}}
+    </select>
+  </label>
+
+  <label>
+    Expiration date
+    <input type="date" name="expiration_date"
+           value="{{if and $item $item.ExpirationDate}}{{$item.ExpirationDate.Format "2006-01-02"}}{{end}}" />
+  </label>
+
+  <label class="wfd-pantry-form__wide">
+    Note
+    <input type="text" name="note" maxlength="255"
+           value="{{if and $item $item.Note}}{{deref $item.Note}}{{end}}" />
+  </label>
+
+  <div class="wfd-pantry-form__actions">
+    <button type="submit" class="wfd-btn wfd-btn--primary">{{if $item}}Save{{else}}Add item{{end}}</button>
+  </div>
+</form>
+{{end}}
