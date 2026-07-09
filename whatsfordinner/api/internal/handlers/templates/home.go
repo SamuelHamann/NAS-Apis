@@ -16,7 +16,7 @@ func (h *Handler) Home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := HomeData{PageData: h.newPageData(r, "Home")}
+	data := HomeData{PageData: h.newPageData(r, "Home", "")}
 
 	if err := ts.Execute(w, data); err != nil {
 		h.logger.Error("render template", "template", "home.html", "error", err)

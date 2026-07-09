@@ -1,0 +1,70 @@
+{{/*
+    Recipe detail page: GET /recipes/{id}. Shows the full recipe — name,
+    description, its ingredient list (ingredients missing from the selected
+    pantry float to the top and are highlighted in red, see
+    OrderRecipeIngredients in recipe_detail_view.go) and the instructions
+    split into one step per line (numbered / dashed / plain line breaks —
+    see ParseInstructionSteps).
+*/}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>{{.Title}} · What's for Dinner</title>
+  {{template "styles" .}}
+</head>
+<body>
+  {{template "navbar" .}}
+
+  <main class="wfd-main wfd-container">
+    <a class="wfd-back-link" href="/recipes">&larr; Back to recipes</a>
+
+    <h1 class="wfd-page-title">{{.Recipe.Name}}</h1>
+    {{if .Recipe.Description}}
+      <p class="wfd-page-subtitle">{{.Recipe.Description}}</p>
+    {{end}}
+
+    <div class="wfd-recipe-meta">
+      {{if .Recipe.Servings}}<span>Serves <strong>{{.Recipe.Servings}}</strong></span>{{end}}
+      {{if .Recipe.PrepTimeMinutes}}<span>Prep <strong>{{.Recipe.PrepTimeMinutes}}m</strong></span>{{end}}
+      {{if .Recipe.CookTimeMinutes}}<span>Cook <strong>{{.Recipe.CookTimeMinutes}}m</strong></span>{{end}}
+      {{if .SelectedPantry}}<span>Checked against <strong>{{.SelectedPantry.Name}}</strong></span>{{end}}
+    </div>
+
+    {{if .Tags}}
+    <div class="wfd-status-item__tags">
+      {{range .Tags}}<span class="wfd-tag-chip">{{.}}</span>{{end}}
+    </div>
+    {{end}}
+
+    <section class="wfd-recipe-section">
+      <h2 class="wfd-section-title">Ingredients</h2>
+      {{if not .Ingredients}}
+        <p class="wfd-list-empty">No ingredients listed for this recipe.</p>
+      {{else}}
+      <ul class="wfd-ingredient-list">
+        {{range .Ingredients}}
+        <li class="wfd-ingredient-item{{if .Missing}} wfd-ingredient-item--missing{{end}}">
+          <span class="wfd-ingredient-item__name">{{.IngredientName}}</span>
+          {{if .QuantityText}}<span class="wfd-ingredient-item__qty">{{.QuantityText}}</span>{{end}}
+          {{if .Note}}<span class="wfd-ingredient-item__note">{{.Note}}</span>{{end}}
+        </li>
+        {{end}}
+      </ul>
+      {{end}}
+    </section>
+
+    <section class="wfd-recipe-section">
+      <h2 class="wfd-section-title">Instructions</h2>
+      {{if not .Instructions}}
+        <p class="wfd-list-empty">No instructions provided.</p>
+      {{else}}
+      <ol class="wfd-instruction-list">
+        {{range .Instructions}}<li>{{.}}</li>{{end}}
+      </ol>
+      {{end}}
+    </section>
+  </main>
+</body>
+</html>

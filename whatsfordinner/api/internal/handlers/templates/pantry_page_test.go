@@ -64,7 +64,7 @@ func pantryPageFixture(t *testing.T) PantryPageData {
 	}
 
 	return PantryPageData{
-		PageData:       PageData{Title: "Pantry", SignedIn: true, CurrentUser: "Alice"},
+		PageData:       PageData{Title: "Pantry", SignedIn: true, CurrentUser: "Alice", ActiveNav: "pantry"},
 		SelectedPantry: &models.Pantry{ID: 1, Name: "Main kitchen", CreatedAt: today},
 		Pantries: []models.Pantry{
 			{ID: 1, Name: "Main kitchen", CreatedAt: today},
@@ -184,7 +184,7 @@ func TestPantryTemplateEmptyState(t *testing.T) {
 
 	today := mustDate(t, "2026-07-09")
 	data := PantryPageData{
-		PageData:       PageData{Title: "Pantry"},
+		PageData:       PageData{Title: "Pantry", ActiveNav: "pantry"},
 		SelectedPantry: &models.Pantry{ID: 1, Name: "Main kitchen", CreatedAt: today},
 		Pantries:       []models.Pantry{{ID: 1, Name: "Main kitchen", CreatedAt: today}},
 		Cards:          nil, // no items
@@ -214,7 +214,7 @@ func TestPantryTemplateNoPantryYet(t *testing.T) {
 
 	var buf bytes.Buffer
 	if err := ts.Execute(&buf, PantryPageData{
-		PageData: PageData{Title: "Pantry"},
+		PageData: PageData{Title: "Pantry", ActiveNav: "pantry"},
 		Sort:     PantrySortExpiration,
 	}); err != nil {
 		t.Fatalf("execute pantry.html: %v", err)

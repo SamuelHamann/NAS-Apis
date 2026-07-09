@@ -44,7 +44,7 @@ func (h *Handler) RecipesPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := RecipesPageData{
-		PageData: h.newPageData(r, "Recipes"),
+		PageData: h.newPageData(r, "Recipes", "recipes"),
 		Pantries: pantries,
 		Sort:     parseRecipeSort(r.URL.Query().Get("sort")),
 	}

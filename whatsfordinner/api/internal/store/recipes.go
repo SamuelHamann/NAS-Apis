@@ -290,3 +290,76 @@ func (s *Store) ListCookableRecipes(ctx context.Context, f CookableFilter, limit
 	}
 	return recipes, nil
 }
+
+// RecipeIngredientDetailRow is one row of a recipe's ingredient list, joined
+// with the ingredient/unit display names and flagged against a pantry's
+// current stock. Used by the recipe detail page (GET /recipes/{id}).
+type RecipeIngredientDetailRow struct {
+	IngredientID   int64    `db:"ingredient_id"`
+	IngredientName string   `db:"ingredient_name"`
+	Quantity       *float64 `db:"quantity"`
+	UnitName       *string  `db:"unit_name"`
+	Note           *string  `db:"note"`
+	// Missing is true when pantryID has none of this ingredient in stock
+	// (quantity > 0). When pantryID is 0 (no pantry selected/exists) every
+	// row comes back missing, which is correct: with no pantry there is,
+	// by definition, nothing in stock anywhere.
+	Missing bool `db:"missing"`
+}
+
+// ListRecipeIngredients returns every ingredient a recipe calls for, joined
+// with the ingredient/unit names, ordered alphabetically by ingredient name.
+// Each row is flagged Missing against pantryID's current stock so the
+// detail page can float missing ingredients to the top in red.
+func (s *Store) ListRecipeIngredients(ctx context.Context, recipeID, pantryID int64) ([]RecipeIngredientDetailRow, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT
+		    ri.ingredient_id AS ingredient_id,
+		    i.name           AS ingredient_name,
+		    ri.quantity      AS quantity,
+		    u.name           AS unit_name,
+		    ri.note          AS note,
+		    NOT EXISTS (
+		        SELECT 1
+		        FROM   pantry_ingredients pi
+		        WHERE  pi.pantry_id     = $2
+		          AND  pi.ingredient_id = ri.ingredient_id
+		          AND  pi.quantity      > 0
+		    ) AS missing
+		FROM   recipe_ingredients ri
+		JOIN   ingredients i ON i.id = ri.ingredient_id
+		LEFT JOIN units u    ON u.id = ri.unit_id
+		WHERE  ri.recipe_id = $1
+		ORDER  BY i.name`,
+		recipeID, pantryID)
+	if err != nil {
+		return nil, mapError(err)
+	}
+
+	items, err := pgx.CollectRows(rows, pgx.RowToStructByName[RecipeIngredientDetailRow])
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return items, nil
+}
+
+// ListRecipeTagNames returns the names of every tag attached to a recipe,
+// alphabetically. Used by the recipe detail page; the recipes list page
+// gets the same data more cheaply via ListRecipesWithStatus's array_agg.
+func (s *Store) ListRecipeTagNames(ctx context.Context, recipeID int64) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT t.name
+		FROM   recipe_tags rt
+		JOIN   tags t ON t.id = rt.tag_id
+		WHERE  rt.recipe_id = $1
+		ORDER  BY t.name`, recipeID)
+	if err != nil {
+		return nil, mapError(err)
+	}
+
+	names, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return names, nil
+}

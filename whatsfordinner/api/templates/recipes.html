@@ -106,7 +106,7 @@
 {{define "recipe_item"}}
 {{ $item := .Item }}
 {{ $data := .RecipesPageData }}
-<article class="wfd-status-item{{if eq (printf "%s" $item.Readiness) "ready"}} wfd-status-item--success{{else if eq (printf "%s" $item.Readiness) "nearly"}} wfd-status-item--warning{{end}}">
+<a class="wfd-status-item wfd-status-item--link{{if eq (printf "%s" $item.Readiness) "ready"}} wfd-status-item--success{{else if eq (printf "%s" $item.Readiness) "nearly"}} wfd-status-item--warning{{end}}" href="/recipes/{{$item.ID}}">
   <div class="wfd-status-item__body">
     <div class="wfd-status-item__title">
       <span>{{$item.Name}}</span>
@@ -142,5 +142,5 @@
     </div>
     {{end}}
   </div>
-</article>
+</a>
 {{end}}

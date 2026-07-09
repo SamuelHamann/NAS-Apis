@@ -4,15 +4,38 @@
         {{template "navbar" .}}
 
     Expects the page's data to (at least) embed handlers.PageData, which
-    provides CurrentUser. See internal/handlers/templates/page_data.go.
+    provides CurrentUser and ActiveNav. See
+    internal/handlers/templates/page_data.go.
 */}}
 {{define "navbar"}}
 <header class="wfd-navbar">
   <div class="wfd-navbar__inner">
-    <a class="wfd-brand" href="/">
-      <span class="wfd-brand__logo" aria-hidden="true">🍲</span>
-      <span>What's for Dinner</span>
-    </a>
+    <div class="wfd-navbar__left">
+      {{/* Burger menu: only shown on narrow viewports (see styles.html),
+           where it replaces .wfd-nav-links below. Same no-JS <details>
+           pattern as the settings gear on the right. */}}
+      <details class="wfd-mobile-nav" id="mobile-nav-menu">
+        <summary class="wfd-icon-btn" aria-label="Menu" aria-haspopup="menu">
+          {{template "icon-menu"}}
+        </summary>
+        <div class="wfd-mobile-nav__panel" role="menu">
+          <a role="menuitem" class="wfd-nav-link{{if eq .ActiveNav "pantry"}} wfd-nav-link--active{{end}}" href="/pantry">{{template "icon-crate"}}<span>Pantry</span></a>
+          <a role="menuitem" class="wfd-nav-link{{if eq .ActiveNav "recipes"}} wfd-nav-link--active{{end}}" href="/recipes">{{template "icon-book"}}<span>Recipes</span></a>
+          <a role="menuitem" class="wfd-nav-link{{if eq .ActiveNav "ingredients"}} wfd-nav-link--active{{end}}" href="/ingredients">{{template "icon-leaf"}}<span>Ingredients</span></a>
+        </div>
+      </details>
+
+      <a class="wfd-brand" href="/">
+        <span class="wfd-brand__logo" aria-hidden="true">🍲</span>
+        <span>What's for Dinner</span>
+      </a>
+    </div>
+
+    <nav class="wfd-nav-links" aria-label="Main">
+      <a class="wfd-nav-link{{if eq .ActiveNav "pantry"}} wfd-nav-link--active{{end}}" href="/pantry">{{template "icon-crate"}}<span>Pantry</span></a>
+      <a class="wfd-nav-link{{if eq .ActiveNav "recipes"}} wfd-nav-link--active{{end}}" href="/recipes">{{template "icon-book"}}<span>Recipes</span></a>
+      <a class="wfd-nav-link{{if eq .ActiveNav "ingredients"}} wfd-nav-link--active{{end}}" href="/ingredients">{{template "icon-leaf"}}<span>Ingredients</span></a>
+    </nav>
 
     <div class="wfd-navbar__right">
       {{if .SignedIn}}

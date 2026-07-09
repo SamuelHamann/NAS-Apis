@@ -138,6 +138,11 @@ func (s *Server) Routes() http.Handler {
 	// tag filter. See templates/recipes.html.
 	mux.HandleFunc("GET /recipes", h.RecipesPage)
 
+	// Recipe detail page: name, description, full ingredient list (missing
+	// ones floated to the top and highlighted) and step-by-step
+	// instructions for a single recipe. See templates/recipe_detail.html.
+	mux.HandleFunc("GET /recipes/{id}", h.RecipeDetailPage)
+
 	// Pantry page: grouped, colour-coded list of the selected pantry's
 	// contents, with sort/filter controls and inline CRUD via HTML forms.
 	// The picker at ?pantry_id=... is a placeholder until a session-backed

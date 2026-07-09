@@ -46,6 +46,17 @@ func parseInt64Path(w http.ResponseWriter, r *http.Request, name string) (int64,
 	return id, true
 }
 
+// parseInt64PathHTML is the HTML-flow variant of parseInt64Path: it returns
+// (id, false) instead of writing an error response, so the caller can
+// choose how to respond (e.g. render a 404 page instead of a JSON error).
+func parseInt64PathHTML(r *http.Request, name string) (int64, bool) {
+	id, err := strconv.ParseInt(r.PathValue(name), 10, 64)
+	if err != nil || id <= 0 {
+		return 0, false
+	}
+	return id, true
+}
+
 // pagination reads optional ?limit and ?offset query parameters.
 func pagination(r *http.Request) (limit, offset int) {
 	return atoiDefault(r.URL.Query().Get("limit"), 0),

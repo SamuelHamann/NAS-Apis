@@ -21,12 +21,18 @@ type PageData struct {
 	// CurrentUser is the display name shown in the navbar. Empty when
 	// SignedIn is false.
 	CurrentUser string
+	// ActiveNav marks which navbar link (see templates/navbar.html) should
+	// be highlighted as "current page": "pantry", "recipes" or
+	// "ingredients". Empty means none of them are highlighted (e.g. the
+	// home page or /login, which aren't in the nav).
+	ActiveNav string
 }
 
 // newPageData builds the PageData common to every page: who (if anyone) is
-// signed in, resolved from the session cookie.
-func (h *Handler) newPageData(r *http.Request, title string) PageData {
-	data := PageData{Title: title}
+// signed in, resolved from the session cookie, plus which navbar link (if
+// any) to highlight as the current page — see PageData.ActiveNav.
+func (h *Handler) newPageData(r *http.Request, title, activeNav string) PageData {
+	data := PageData{Title: title, ActiveNav: activeNav}
 
 	id, ok := sessionUserID(r)
 	if !ok {

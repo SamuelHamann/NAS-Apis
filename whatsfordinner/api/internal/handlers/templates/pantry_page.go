@@ -62,7 +62,7 @@ func (h *Handler) PantryPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := PantryPageData{
-		PageData: h.newPageData(r, "Pantry"),
+		PageData: h.newPageData(r, "Pantry", "pantry"),
 		Pantries: pantries,
 		Sort:     parsePantrySort(r.URL.Query().Get("sort")),
 		Error:    r.URL.Query().Get("error"),

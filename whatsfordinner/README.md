@@ -135,6 +135,10 @@ whatsfordinner/
 │   │       ├── session.go   # "Signed in" cookie helpers (no password)
 │   │       ├── flash.go     # redirect-with-?error= helper for HTML forms
 │   │       ├── recipes.go
+│   │       ├── recipes_view.go        # Pure grouping/colour logic for /recipes
+│   │       ├── recipes_page.go        # GET /recipes handler
+│   │       ├── recipe_detail_view.go  # Pure ingredient-ordering + instruction-parsing logic
+│   │       ├── recipe_detail_page.go  # GET /recipes/{id} handler
 │   │       ├── ingredients.go
 │   │       ├── units.go
 │   │       ├── tags.go
@@ -142,10 +146,11 @@ whatsfordinner/
 │   ├── templates/           # Go html/template pages + shared partials
 │   │   ├── styles.html      # {{define "styles"}} - design tokens + all CSS
 │   │   ├── icons.html       # {{define "icon-*"}} - shared inline SVG icons
-│   │   ├── navbar.html      # {{define "navbar"}} - shared top nav
+│   │   ├── navbar.html      # {{define "navbar"}} - shared top nav (+ Pantry/Recipes/Ingredients links)
 │   │   ├── home.html        # GET / and /home
 │   │   ├── login.html       # GET /login
 │   │   ├── recipes.html     # GET /recipes (+ recipe_item partial)
+│   │   ├── recipe_detail.html # GET /recipes/{id}
 │   │   └── pantry.html      # GET /pantry (+ pantry_item / pantry_form partials)
 │   ├── Dockerfile           # 2-stage build: Go -> distroless
 │   ├── Makefile             # Common dev commands (run, build, test, ...)
@@ -181,9 +186,38 @@ whatsfordinner/
 Structs live in `internal/models`. Nullable columns are pointers and serialize to
 `null`. Server-managed fields (`id`, `created_at`, `updated_at`) are read-only.
 
-- **Recipe** (`recipes`, UUID id) — `name` (required), `description`, `instructions`,
+- **Recipe** (`recipes`, bigint id) — `name` (required), `description`, `instructions`,
   `source_url`, `servings` (>0), `prep_time_minutes` (≥0), `cook_time_minutes` (≥0),
   `created_at`, `updated_at`.
+
+  **`recipes.id` changed from UUID to bigint.** Every table with a `recipe_id`
+  foreign key must be migrated to match, or joins against `recipes` fail with
+  `ERROR: operator does not exist: uuid = bigint (SQLSTATE 42883)`. On a
+  dev/WIP database (i.e. no rows worth preserving) the simplest fix is to
+  clear the dependent tables and retype the column:
+
+  ```sql
+  TRUNCATE TABLE recipe_ingredients, recipe_tags, past_cooked_recipes;
+
+  ALTER TABLE recipe_ingredients  ALTER COLUMN recipe_id TYPE bigint USING NULL;
+  ALTER TABLE recipe_tags         ALTER COLUMN recipe_id TYPE bigint USING NULL;
+  ALTER TABLE past_cooked_recipes ALTER COLUMN recipe_id TYPE bigint USING NULL;
+
+  -- Re-add the FKs (skip any that are already present under a different name).
+  ALTER TABLE recipe_ingredients
+      ADD CONSTRAINT recipe_ingredients_recipe_id_fkey
+      FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE;
+  ALTER TABLE recipe_tags
+      ADD CONSTRAINT recipe_tags_recipe_id_fkey
+      FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE;
+  ALTER TABLE past_cooked_recipes
+      ADD CONSTRAINT past_cooked_recipes_recipe_id_fkey
+      FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE;
+  ```
+
+  If existing rows must be preserved instead, replace the `TRUNCATE` +
+  `USING NULL` with a mapping from each table's old UUID `recipe_id` values
+  to the new bigint `recipes.id` values before altering the column type.
 - **Ingredient** (`ingredients`, bigint id) — `name` (required, unique, case-insensitive),
   `created_at`.
 - **Unit** (`units`, bigint id) — `name` (required, unique, case-insensitive), `created_at`.
@@ -270,8 +304,21 @@ Conventions:
 
 Server-rendered HTML (Go `html/template`, see
 [`api/templates`](./api/templates)) — not JSON. A shared navbar (top of every
-page) shows the signed-in user's name and a settings gear, or a **Sign in**
-button when no one is signed in.
+page) shows site navigation (**Pantry** / **Recipes** / **Ingredients** —
+the last is a reserved link, not implemented yet) plus the signed-in user's
+name and a settings gear, or a **Sign in** button when no one is signed in.
+
+- **Active-page highlighting** — each page handler tells the navbar which
+  link it corresponds to via `PageData.ActiveNav` (`"pantry"` / `"recipes"` /
+  `"ingredients"` / `""`; see `internal/handlers/templates/page_data.go`).
+  The recipe detail page (`/recipes/{id}`) sets `"recipes"` too, so it stays
+  highlighted as part of that section. Pages not in the nav (home, login)
+  leave it empty and nothing is highlighted.
+- **Mobile burger menu** — below a narrow-viewport breakpoint the always-on
+  nav row is replaced by a `<details>`-based burger menu on the left (same
+  no-JS pattern as the settings gear on the right), containing the same
+  three links. See `.wfd-mobile-nav` / `.wfd-nav-links` in
+  `templates/styles.html`.
 
 | Method | Path                  | Description                                                    |
 | ------ | --------------------- | ---------------------------------------------------------------- |
@@ -282,6 +329,7 @@ button when no one is signed in.
 | POST   | `/users/{id}/delete`   | Delete a user (signs the browser out if it was the active one)   |
 | POST   | `/users/{id}/select`   | Sign in as this user (sets the `wfd_user_id` cookie)              |
 | GET    | `/recipes`             | Recipes page: grouped/coloured by pantry-relative readiness, with sort + tag filter |
+| GET    | `/recipes/{id}`        | Recipe detail page: ingredients (missing ones highlighted) + instructions |
 | GET    | `/pantry`              | Pantry page: grouped/coloured stock list with sort + tag filter  |
 | POST   | `/pantry`              | Add a pantry item (form)                                          |
 | POST   | `/pantry/{id}/update`  | Edit a pantry item (form)                                         |
@@ -332,6 +380,32 @@ Grouping modes:
 
 Recipes with zero required ingredients are treated as trivially ready
 (`missing_count = 0`), matching `/recipes/cookable`'s semantics.
+
+### Recipe detail page (`GET /recipes/{id}`)
+
+Clicking a recipe on the recipes page opens its full detail: name,
+description, servings/prep/cook time, tag chips, its ingredient list and its
+instructions.
+
+- **Ingredients** — every ingredient the recipe calls for, in alphabetical
+  order, with **ingredients missing from the selected pantry floated to the
+  top and highlighted in red** (still alphabetical within each group). "In
+  stock" is the same check the recipes page uses:
+  `pantry_ingredients.quantity > 0` for the selected pantry. With no
+  selected pantry (none exist yet) every ingredient is shown as missing —
+  correct, since there is nothing in stock anywhere. Quantity + unit are
+  shown when the recipe specifies them (e.g. "2 cups"); a per-ingredient
+  note renders underneath.
+- **Instructions** — `recipes.instructions` split into one step per line.
+  Each line is checked, independently, for a leading marker and the marker
+  is stripped: numbered (`1.`, `1)`, `1:`, `(1)`), dashed/bulleted (`-`,
+  `*`, `•`). A line with no marker is kept as-is, so a recipe that's simply
+  separated by line breaks still renders one step per line instead of one
+  paragraph. See `ParseInstructionSteps` in
+  `internal/handlers/templates/recipe_detail_view.go`.
+
+The same `?pantry_id=...` query parameter as the recipes/pantry pages picks
+which pantry the ingredient list is checked against.
 
 ### Pantry page (`GET /pantry`)
 
@@ -387,7 +461,7 @@ the same set):
   templates can compare/print it without needing extra Go-side helpers on
   every model.
 
-### Recipes (`id` = UUID)
+### Recipes (`id` = bigint)
 
 | Method | Path                    | Description                              |
 | ------ | ----------------------- | ---------------------------------------- |
@@ -497,7 +571,7 @@ One row per recipe — tracks how many times it has been cooked and when last.
 ```sh
 curl -X POST http://localhost:8080/past-cooked \
   -H 'Content-Type: application/json' \
-  -d '{"recipe_id":"<uuid>"}'
+  -d '{"recipe_id":1}'
 ```
 
 **Update** (`PUT`): `times_cooked` is required; `last_cooked_at` is optional (defaults to `now()`).

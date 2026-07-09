@@ -35,7 +35,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := LoginData{
-		PageData: h.newPageData(r, "Sign in"),
+		PageData: h.newPageData(r, "Sign in", ""),
 		Users:    users,
 		Error:    r.URL.Query().Get("error"),
 	}

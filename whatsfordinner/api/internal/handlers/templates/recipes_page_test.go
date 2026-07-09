@@ -46,7 +46,7 @@ func recipesPageFixture(t *testing.T) RecipesPageData {
 	}
 
 	return RecipesPageData{
-		PageData:       PageData{Title: "Recipes", SignedIn: true, CurrentUser: "Alice"},
+		PageData:       PageData{Title: "Recipes", SignedIn: true, CurrentUser: "Alice", ActiveNav: "recipes"},
 		SelectedPantry: &models.Pantry{ID: 1, Name: "Main kitchen", CreatedAt: now, UpdatedAt: now},
 		Pantries: []models.Pantry{
 			{ID: 1, Name: "Main kitchen"},
@@ -180,7 +180,7 @@ func TestRecipesTemplateForcesAlphabeticalWithoutPantry(t *testing.T) {
 	}
 
 	data := RecipesPageData{
-		PageData: PageData{Title: "Recipes"},
+		PageData: PageData{Title: "Recipes", ActiveNav: "recipes"},
 		Sort:     RecipeSortAlphabetical,
 		Cards: GroupRecipes([]store.RecipeStatusRow{
 			{Recipe: models.Recipe{ID: 1, Name: "Bread"}, MissingCount: 0},

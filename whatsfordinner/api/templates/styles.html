@@ -102,6 +102,13 @@
     gap: 0.75rem;
   }
 
+  .wfd-navbar__left {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+
   .wfd-brand {
     display: flex;
     align-items: center;
@@ -111,6 +118,85 @@
     white-space: nowrap;
   }
   .wfd-brand__logo { font-size: 1.3rem; line-height: 1; }
+
+  /* Site nav (Pantry / Recipes / Ingredients), shown inline once there's
+     room. Below the breakpoint further down this is replaced entirely by
+     the burger menu (.wfd-mobile-nav below) rather than shrinking to
+     icon-only, since three labeled links plus the brand and user controls
+     don't fit comfortably on a phone-width screen. */
+  .wfd-nav-links {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+  .wfd-nav-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    height: 40px;
+    padding-inline: 0.6rem;
+    border-radius: var(--wfd-radius-sm);
+    color: var(--wfd-text-muted);
+    font-weight: 600;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .wfd-nav-link svg { width: 20px; height: 20px; flex: none; }
+  .wfd-nav-link:hover, .wfd-nav-link:focus-visible {
+    background: var(--wfd-surface-alt);
+    color: var(--wfd-text);
+    outline: none;
+  }
+  /* Current-page highlight — set from PageData.ActiveNav (see
+     internal/handlers/templates/page_data.go). Applies identically inside
+     the inline nav and the burger dropdown, since both reuse .wfd-nav-link. */
+  .wfd-nav-link--active {
+    color: var(--wfd-primary);
+    background: var(--wfd-primary-soft);
+  }
+  .wfd-nav-link--active:hover, .wfd-nav-link--active:focus-visible {
+    background: var(--wfd-primary-soft);
+    color: var(--wfd-primary);
+  }
+
+  /* Burger menu: a <details>/<summary> dropdown, same no-JS pattern as the
+     settings gear on the right (.wfd-settings below), just anchored to the
+     left edge instead of the right. Hidden until the viewport is too
+     narrow for .wfd-nav-links (see the shared breakpoint further down). */
+  .wfd-mobile-nav {
+    position: relative;
+    display: none;
+  }
+  .wfd-mobile-nav > summary { list-style: none; }
+  .wfd-mobile-nav > summary::-webkit-details-marker { display: none; }
+
+  .wfd-mobile-nav__panel {
+    position: absolute;
+    left: 0;
+    top: calc(100% + 8px);
+    min-width: 200px;
+    max-width: calc(100vw - 2rem);
+    background: var(--wfd-surface);
+    border: 1px solid var(--wfd-border);
+    border-radius: var(--wfd-radius-md);
+    box-shadow: var(--wfd-shadow);
+    padding: 0.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .wfd-mobile-nav__panel .wfd-nav-link {
+    width: 100%;
+    color: var(--wfd-text);
+  }
+
+  /* Swap point between the inline nav and the burger menu. */
+  @media (max-width: 720px) {
+    .wfd-nav-links { display: none; }
+    .wfd-mobile-nav { display: block; }
+  }
 
   .wfd-navbar__right {
     display: flex;
@@ -736,6 +822,103 @@
     .wfd-status-item--success { background: rgba(74, 222, 128, 0.14); }
     .wfd-status-item--warning { background: rgba(255, 179, 61, 0.18); }
   }
+
+  /* Recipe rows are links through to the detail page (GET /recipes/{id});
+     keep the same layout as the plain <article> version but signal
+     interactivity without fighting the tone backgrounds above. */
+  a.wfd-status-item--link {
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  a.wfd-status-item--link:hover .wfd-status-item__title span:first-child,
+  a.wfd-status-item--link:focus-visible .wfd-status-item__title span:first-child {
+    text-decoration: underline;
+  }
+  a.wfd-status-item--link:focus-visible {
+    outline: 2px solid var(--wfd-primary);
+    outline-offset: -2px;
+  }
+
+  /* --- Recipe detail page ------------------------------------------------ */
+
+  .wfd-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-bottom: 0.75rem;
+    color: var(--wfd-text-muted);
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+  .wfd-back-link:hover, .wfd-back-link:focus-visible {
+    color: var(--wfd-text);
+    outline: none;
+  }
+
+  .wfd-recipe-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1rem;
+    color: var(--wfd-text-muted);
+    font-size: 0.9rem;
+    margin-bottom: 0.75rem;
+  }
+  .wfd-recipe-meta strong { color: var(--wfd-text); font-weight: 600; }
+
+  .wfd-recipe-section { margin-top: 2rem; }
+  .wfd-section-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+  }
+
+  .wfd-ingredient-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    background: var(--wfd-surface);
+    border: 1px solid var(--wfd-border);
+    border-radius: var(--wfd-radius-lg);
+    box-shadow: var(--wfd-shadow);
+    overflow: hidden;
+  }
+  .wfd-ingredient-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.3rem 0.6rem;
+    padding: 0.7rem 0.9rem;
+    border-top: 1px solid var(--wfd-border);
+  }
+  .wfd-ingredient-item:first-child { border-top: none; }
+  .wfd-ingredient-item__name { font-weight: 600; }
+  .wfd-ingredient-item__qty {
+    color: var(--wfd-text-muted);
+    font-size: 0.9rem;
+  }
+  .wfd-ingredient-item__note {
+    flex-basis: 100%;
+    color: var(--wfd-text-muted);
+    font-size: 0.82rem;
+  }
+  /* Missing-from-pantry ingredients float to the top (see
+     OrderRecipeIngredients) and are highlighted in red so they jump out
+     immediately. */
+  .wfd-ingredient-item--missing {
+    background: var(--wfd-danger-soft);
+  }
+  .wfd-ingredient-item--missing .wfd-ingredient-item__name {
+    color: var(--wfd-danger);
+  }
+
+  .wfd-instruction-list {
+    margin: 0;
+    padding-left: 1.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+  .wfd-instruction-list li { padding-left: 0.2rem; }
 
   /* "Scan receipt" only makes sense with a phone camera in hand: show it
      only on small, touch-primary viewports instead of gating on JS/UA
