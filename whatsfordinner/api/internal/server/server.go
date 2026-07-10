@@ -152,5 +152,13 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /pantry/{id}/update", h.PantryUpdate)
 	mux.HandleFunc("POST /pantry/{id}/delete", h.PantryDelete)
 
+	// Ingredients page: every canonical ingredient, alphabetical, with a
+	// live search box, a tag filter and inline CRUD via HTML forms. See
+	// templates/ingredients.html.
+	mux.HandleFunc("GET /ingredients", h.IngredientsPage)
+	mux.HandleFunc("POST /ingredients", h.IngredientsCreate)
+	mux.HandleFunc("POST /ingredients/{id}/update", h.IngredientsUpdate)
+	mux.HandleFunc("POST /ingredients/{id}/delete", h.IngredientsDelete)
+
 	return s.withMiddleware(mux)
 }

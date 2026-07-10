@@ -140,19 +140,21 @@ whatsfordinner/
 │   │       ├── recipe_detail_view.go  # Pure ingredient-ordering + instruction-parsing logic
 │   │       ├── recipe_detail_page.go  # GET /recipes/{id} handler
 │   │       ├── ingredients.go
+│   │       ├── ingredients_page.go    # GET /ingredients + CRUD handlers
 │   │       ├── units.go
 │   │       ├── tags.go
 │   │       └── pantry.go
 │   ├── templates/           # Go html/template pages + shared partials
 │   │   ├── styles.html      # {{define "styles"}} - design tokens + all CSS
 │   │   ├── icons.html       # {{define "icon-*"}} - shared inline SVG icons
-│   │   ├── scripts.html     # {{define "search-script"}} - live "type to filter" JS, shared by recipes.html/pantry.html
+│   │   ├── scripts.html     # {{define "search-script"}} - live "type to filter" JS, shared by recipes.html/pantry.html/ingredients.html
 │   │   ├── navbar.html      # {{define "navbar"}} - shared top nav (+ Pantry/Recipes/Ingredients links)
 │   │   ├── home.html        # GET / and /home
 │   │   ├── login.html       # GET /login
 │   │   ├── recipes.html     # GET /recipes (+ recipe_item partial)
 │   │   ├── recipe_detail.html # GET /recipes/{id}
-│   │   └── pantry.html      # GET /pantry (+ pantry_item / pantry_form partials)
+│   │   ├── pantry.html      # GET /pantry (+ pantry_item / pantry_form partials)
+│   │   └── ingredients.html # GET /ingredients (+ ingredient_item / ingredient_form partials)
 │   ├── Dockerfile           # 2-stage build: Go -> distroless
 │   ├── Makefile             # Common dev commands (run, build, test, ...)
 │   ├── go.mod
@@ -220,7 +222,21 @@ Structs live in `internal/models`. Nullable columns are pointers and serialize t
   `USING NULL` with a mapping from each table's old UUID `recipe_id` values
   to the new bigint `recipes.id` values before altering the column type.
 - **Ingredient** (`ingredients`, bigint id) — `name` (required, unique, case-insensitive),
-  `created_at`.
+  `created_at`. Tagged via the `ingredient_tags` junction table (`ingredient_id`,
+  `tag_id`, both FKs with `ON DELETE CASCADE`) — the same many-to-many shape
+  as `recipe_tags`, surfaced on the `/ingredients` page's filter/CRUD.
+
+  **`ingredient_tags` is not yet part of the schema provisioned by
+  [NAS-Images/postgres](https://github.com/SamuelHamann/NAS-Images/tree/main/postgres)
+  — add it there before deploying this version:**
+
+  ```sql
+  CREATE TABLE IF NOT EXISTS ingredient_tags (
+      ingredient_id   bigint    NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+      tag_id          bigint    NOT NULL REFERENCES tags(id)        ON DELETE CASCADE,
+      PRIMARY KEY (ingredient_id, tag_id)
+  );
+  ```
 - **Unit** (`units`, bigint id) — `name` (required, unique, case-insensitive), `created_at`.
 - **Tag** (`tags`, bigint id) — `name` (required, unique, case-insensitive).
 - **PantryIngredient** (`pantry_ingredients`, UUID id) — `pantry_id` (required, FK
@@ -305,9 +321,9 @@ Conventions:
 
 Server-rendered HTML (Go `html/template`, see
 [`api/templates`](./api/templates)) — not JSON. A shared navbar (top of every
-page) shows site navigation (**Pantry** / **Recipes** / **Ingredients** —
-the last is a reserved link, not implemented yet) plus the signed-in user's
-name and a settings gear, or a **Sign in** button when no one is signed in.
+page) shows site navigation (**Pantry** / **Recipes** / **Ingredients**)
+plus the signed-in user's name and a settings gear, or a **Sign in** button
+when no one is signed in.
 
 - **Active-page highlighting** — each page handler tells the navbar which
   link it corresponds to via `PageData.ActiveNav` (`"pantry"` / `"recipes"` /
@@ -335,6 +351,10 @@ name and a settings gear, or a **Sign in** button when no one is signed in.
 | POST   | `/pantry`              | Add a pantry item (form)                                          |
 | POST   | `/pantry/{id}/update`  | Edit a pantry item (form)                                         |
 | POST   | `/pantry/{id}/delete`  | Delete a pantry item (form)                                       |
+| GET    | `/ingredients`             | Ingredients page: alphabetical list with search + tag filter and inline CRUD |
+| POST   | `/ingredients`             | Add an ingredient (form)                                          |
+| POST   | `/ingredients/{id}/update` | Edit an ingredient, including its tags (form)                     |
+| POST   | `/ingredients/{id}/delete` | Delete an ingredient (form)                                       |
 
 There's no password: the users table is just "who is using this household
 device right now". `/login` doubles as both the sign-in picker and the user
@@ -454,12 +474,36 @@ semantics (matching any selected tag counts).
 A search box above the toolbar filters the currently rendered cards live,
 client-side, as you type — see [Live search](#live-search) below.
 
+### Ingredients page (`GET /ingredients`)
+
+The canonical, reusable ingredient list (the same `ingredients` table every
+recipe and pantry entry references) — a single alphabetical list rather
+than the pantry/recipes pages' colour-coded cards, since ingredients don't
+have an inherent "status" to group by.
+
+Each row shows the ingredient's name and the chips for every tag attached to
+it via `ingredient_tags`, plus inline edit/delete actions. The "Add
+ingredient" form (and each row's edit form) is a name field plus a set of
+tag checkboxes, matching the `ingredient_tags` junction table — an
+ingredient can carry any number of tags, and saving replaces its full tag
+set (an empty selection clears all tags).
+
+Query parameters:
+
+| Parameter | Values                             | Default | Description                                                    |
+| --------- | ----------------------------------- | ------- | ---------------------------------------------------------------- |
+| `tags`    | integer (repeat: `?tags=1&tags=2`) | none    | Show only ingredients carrying **any** of these tag IDs (OR semantics) |
+| `error`   | string                              | none    | Flash message rendered as an error banner (set by the CRUD handlers on redirect) |
+
+A search box above the toolbar filters the currently rendered list live,
+client-side, as you type — see [Live search](#live-search) below.
+
 ### Live search
 
-Both the recipes and pantry pages have a search box in the toolbar that
-filters by name — a plain, case-insensitive "contains" match — updating on
-every keystroke. This is deliberately **client-side only** (no request to
-the server, no page reload): the box only ever affects the set of
+Both the recipes, pantry and ingredients pages have a search box in the
+toolbar that filters by name — a plain, case-insensitive "contains" match —
+updating on every keystroke. This is deliberately **client-side only** (no
+request to the server, no page reload): the box only ever affects the set of
 cards/items already rendered in the current page load, so it composes with
 the sort/tag-filter query params but doesn't replace them (e.g. it won't
 find a recipe excluded by the tag filter — clear the tag filter for that).

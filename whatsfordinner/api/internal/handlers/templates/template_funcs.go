@@ -20,10 +20,14 @@ import (
 //   - deref *T                 dereference a pointer field (*string,
 //     *int64, ...) so templates can compare/print it without needing extra
 //     Go-side helpers on every model.
+//   - hasString []string s      report whether s appears in the slice.
+//     templates/ingredients.html uses this to pre-check a tag's checkbox
+//     when editing an ingredient (comparing against its []string TagNames).
 func TemplateFuncs() template.FuncMap {
 	return template.FuncMap{
-		"dict":  templateDict,
-		"deref": templateDeref,
+		"dict":      templateDict,
+		"deref":     templateDeref,
+		"hasString": templateHasString,
 	}
 }
 
@@ -56,4 +60,14 @@ func templateDeref(v any) any {
 		return nil
 	}
 	return rv.Elem().Interface()
+}
+
+// templateHasString reports whether s appears in xs.
+func templateHasString(xs []string, s string) bool {
+	for _, x := range xs {
+		if x == s {
+			return true
+		}
+	}
+	return false
 }

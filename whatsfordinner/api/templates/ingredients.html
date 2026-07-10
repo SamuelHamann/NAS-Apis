@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>{{.Title}} · What's for Dinner</title>
+  {{template "styles" .}}
+</head>
+<body>
+  {{template "navbar" .}}
+
+  <main class="wfd-main wfd-container">
+    <h1 class="wfd-page-title">Ingredients</h1>
+    <p class="wfd-page-subtitle">{{len .Items}} ingredient{{if ne (len .Items) 1}}s{{end}}, alphabetical.</p>
+
+    {{if .Error}}
+    <p class="wfd-error-banner">{{.Error}}</p>
+    {{end}}
+
+    {{/* --- Toolbar: search, tag filter, add-ingredient ------------------
+
+         Same nesting-safe layout as the pantry/recipes pages: the filter
+         form (id="ingredients-view") is a zero-content sibling of the
+         visible toolbar rather than wrapping it, so every filter input opts
+         back in via `form="ingredients-view"` and the Add-ingredient block
+         is free to be its own POST form. See the comment on pantry.html forà
+         the full nested-<form> explanation. */}}
+    <form id="ingredients-view" method="get" action="/ingredients" hidden></form>
+
+    <div class="wfd-toolbar">
+      <div class="wfd-toolbar__row wfd-toolbar__row--between">
+        <label class="wfd-search">
+          {{template "icon-search"}}
+          <input type="search" placeholder="Search ingredients…" aria-label="Search ingredients"
+                 data-search-input="#ingredients-list" data-search-empty="#ingredients-search-empty"
+                 autocomplete="off" />
+        </label>
+
+        <details class="wfd-create">
+          <summary class="wfd-btn wfd-btn--primary">
+            {{template "icon-plus"}}
+            <span>Add ingredient</span>
+          </summary>
+          {{template "ingredient_form" (dict "Action" "/ingredients" "IngredientsPageData" . "Item" nil)}}
+        </details>
+      </div>
+
+      {{if .Tags}}
+      <div class="wfd-toolbar__row">
+        <span class="wfd-toolbar__group-label" style="display:inline-flex;align-items:center;gap:0.35rem;">
+          {{template "icon-filter"}} Tags
+        </span>
+        <div class="wfd-tag-filter">
+          {{range .Tags}}
+          <label class="wfd-tag-filter__chip">
+            <input type="checkbox" name="tags" value="{{.ID}}" form="ingredients-view" {{if index $.SelectedTagIDs .ID}}checked{{end}} onchange="this.form.submit()" />
+            <span>{{.Name}}</span>
+          </label>
+          {{end}}
+        </div>
+      </div>
+      {{end}}
+    </div>
+
+    {{/* --- Content --------------------------------------------------- */}}
+    {{if not .Items}}
+      <p class="wfd-list-empty">
+        {{if .SelectedTagIDs}}No ingredients match this tag filter.
+        {{else}}No ingredients yet — use “Add ingredient” to add your first one.{{end}}
+      </p>
+    {{else}}
+      <section class="wfd-status-card">
+        <div id="ingredients-list">
+          {{range .Items}}
+            {{template "ingredient_item" (dict "Item" . "IngredientsPageData" $)}}
+          {{end}}
+        </div>
+      </section>
+      <p class="wfd-list-empty" id="ingredients-search-empty" hidden>No ingredients match your search.</p>
+    {{end}}
+  </main>
+
+  {{template "search-script" .}}
+</body>
+</html>
+
+{{/* -----------------------------------------------------------------------
+     One ingredient row + inline edit form. Expects a dict with:
+        Item                 (store.IngredientDetailRow)
+        IngredientsPageData  (the outer .)
+   ----------------------------------------------------------------------- */}}
+{{define "ingredient_item"}}
+{{ $item := .Item }}
+{{ $data := .IngredientsPageData }}
+<div class="wfd-status-item" data-search-name="{{$item.Name}}">
+  <div class="wfd-status-item__body">
+    <div class="wfd-status-item__title">
+      <span>{{$item.Name}}</span>
+    </div>
+    {{if $item.TagNames}}
+    <div class="wfd-status-item__tags">
+      {{range $item.TagNames}}
+        <span class="wfd-tag-chip">{{.}}</span>
+      {{end}}
+    </div>
+    {{end}}
+  </div>
+
+  <div class="wfd-pantry-item__actions">
+    <form method="post" action="/ingredients/{{$item.ID}}/delete" onsubmit="return confirm('Delete this ingredient?');">
+      {{range $tid, $on := $data.SelectedTagIDs}}{{if $on}}<input type="hidden" name="view_tags" value="{{$tid}}" />{{end}}{{end}}
+      <button type="submit" class="wfd-icon-btn" aria-label="Delete {{$item.Name}}">{{template "icon-trash"}}</button>
+    </form>
+
+    <details class="wfd-pantry-item__edit">
+      <summary class="wfd-icon-btn" aria-label="Edit {{$item.Name}}">{{template "icon-pencil"}}</summary>
+      {{template "ingredient_form" (dict "Action" (printf "/ingredients/%d/update" $item.ID) "IngredientsPageData" $data "Item" $item)}}
+    </details>
+  </div>
+</div>
+{{end}}
+
+{{/* -----------------------------------------------------------------------
+     Create/update form for an ingredient. Expects a dict with:
+        Action               (form target URL)
+        IngredientsPageData  (the outer .; used to render the tag list and
+                              to carry the current tag filter forward)
+        Item                 (a store.IngredientDetailRow, or nil for create)
+   ----------------------------------------------------------------------- */}}
+{{define "ingredient_form"}}
+{{ $action := .Action }}
+{{ $data := .IngredientsPageData }}
+{{ $item := .Item }}
+<form method="post" action="{{$action}}" class="wfd-pantry-form">
+  {{range $tid, $on := $data.SelectedTagIDs}}{{if $on}}<input type="hidden" name="view_tags" value="{{$tid}}" />{{end}}{{end}}
+
+  <label class="wfd-pantry-form__wide">
+    Name
+    <input type="text" name="name" required maxlength="255"
+           value="{{if $item}}{{$item.Name}}{{end}}" />
+  </label>
+
+  {{if $data.Tags}}
+  <label class="wfd-pantry-form__wide">
+    Tags
+    <div class="wfd-tag-filter">
+      {{range $data.Tags}}
+      {{ $tag := . }}
+      <label class="wfd-tag-filter__chip">
+        <input type="checkbox" name="tag_ids" value="{{$tag.ID}}" {{if and $item (hasString $item.TagNames $tag.Name)}}checked{{end}} />
+        <span>{{$tag.Name}}</span>
+      </label>
+      {{end}}
+    </div>
+  </label>
+  {{end}}
+
+  <div class="wfd-pantry-form__actions">
+    <button type="submit" class="wfd-btn wfd-btn--primary">{{if $item}}Save{{else}}Add ingredient{{end}}</button>
+  </div>
+</form>
+{{end}}
