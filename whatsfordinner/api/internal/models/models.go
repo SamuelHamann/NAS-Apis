@@ -75,6 +75,32 @@ type FoodLocation struct {
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
 
+// CombinedIngredient maps to the combined_ingredients table: a named bundle
+// of component ingredients (e.g. "taco seasoning mix") with its own
+// quantity/unit, used the same way a canonical Ingredient is.
+type CombinedIngredient struct {
+	ID        int64     `json:"id" db:"id"`
+	Name      string    `json:"name" db:"name"`
+	Quantity  float64   `json:"quantity" db:"quantity"`
+	UnitID    *int64    `json:"unit_id" db:"unit_id"`
+	Note      *string   `json:"note" db:"note"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// CombinedIngredientItem maps to the combined_ingredient_items junction
+// table — one component ingredient of a CombinedIngredient. Mirrors
+// RecipeIngredient's shape, keyed by combined_ingredient_id instead of
+// recipe_id. Unlike RecipeIngredient, this relationship's CRUD is NOT
+// deferred — see internal/store/combined_ingredients.go.
+type CombinedIngredientItem struct {
+	CombinedIngredientID int64    `json:"combined_ingredient_id" db:"combined_ingredient_id"`
+	IngredientID         int64    `json:"ingredient_id" db:"ingredient_id"`
+	Quantity             *float64 `json:"quantity" db:"quantity"`
+	UnitID               *int64   `json:"unit_id" db:"unit_id"`
+	Note                 *string  `json:"note" db:"note"`
+}
+
 // RecipeIngredient maps to the recipe_ingredients junction table.
 //
 // Full CRUD for this relationship is intentionally deferred — it is managed as

@@ -6,8 +6,10 @@ PostgreSQL via [pgx](https://github.com/jackc/pgx), and is designed to run as a
 container on the NAS.
 
 It currently exposes basic CRUD over the core tables (recipes, ingredients, units,
-tags and pantry stock). The relationship tables (`recipe_ingredients`, `recipe_tags`)
-are modelled but their endpoints are deferred to a later iteration.
+tags and pantry stock), plus combined ingredients — bundles of component
+ingredients with their own quantity/unit each (`combined_ingredients` /
+`combined_ingredient_items`). The `recipe_ingredients`/`recipe_tags` relationship
+tables are modelled but their endpoints are deferred to a later iteration.
 
 The UI (home page, sign-in) is server-rendered HTML — Go's `html/template`
 reading from [`api/templates`](./api/templates) — served from the same origin
@@ -118,6 +120,7 @@ whatsfordinner/
 │   │   │   ├── store.go     # Store type, sentinel errors, error mapping
 │   │   │   ├── recipes.go
 │   │   │   ├── ingredients.go
+│   │   │   ├── combined_ingredients.go
 │   │   │   ├── units.go
 │   │   │   ├── tags.go
 │   │   │   ├── pantry.go
@@ -141,20 +144,24 @@ whatsfordinner/
 │   │       ├── recipe_detail_page.go  # GET /recipes/{id} handler
 │   │       ├── ingredients.go
 │   │       ├── ingredients_page.go    # GET /ingredients + CRUD handlers
+│   │       ├── combined_ingredients_page.go # CRUD for the /ingredients page's "Combined ingredients" tab (no own GET route)
 │   │       ├── units.go
 │   │       ├── tags.go
 │   │       └── pantry.go
 │   ├── templates/           # Go html/template pages + shared partials
 │   │   ├── styles.html      # {{define "styles"}} - design tokens + all CSS
 │   │   ├── icons.html       # {{define "icon-*"}} - shared inline SVG icons
-│   │   ├── scripts.html     # {{define "search-script"}} - live "type to filter" JS, shared by recipes.html/pantry.html/ingredients.html
+│   │   ├── scripts.html     # {{define "search-script"/"tabs-script"/"item-rows-script"}} - shared vanilla JS
 │   │   ├── navbar.html      # {{define "navbar"}} - shared top nav (+ Pantry/Recipes/Ingredients links)
 │   │   ├── home.html        # GET / and /home
 │   │   ├── login.html       # GET /login
 │   │   ├── recipes.html     # GET /recipes (+ recipe_item partial)
 │   │   ├── recipe_detail.html # GET /recipes/{id}
 │   │   ├── pantry.html      # GET /pantry (+ pantry_item / pantry_form partials)
-│   │   └── ingredients.html # GET /ingredients (+ ingredient_item / ingredient_form partials)
+│   │   └── ingredients.html # GET /ingredients - Ingredients + Combined ingredients tabs
+│   │                        #   (+ ingredient_item/ingredient_form and
+│   │                        #   combined_ingredient_item/combined_ingredient_form/
+│   │                        #   combined_ingredient_item_row partials)
 │   ├── Dockerfile           # 2-stage build: Go -> distroless
 │   ├── Makefile             # Common dev commands (run, build, test, ...)
 │   ├── go.mod
@@ -237,6 +244,23 @@ Structs live in `internal/models`. Nullable columns are pointers and serialize t
       PRIMARY KEY (ingredient_id, tag_id)
   );
   ```
+- **CombinedIngredient** (`combined_ingredients`, bigint id) — `name` (required,
+  unique, case-insensitive), `quantity` (required, ≥0), `unit_id` (optional FK →
+  `units`), `note`, `created_at`, `updated_at`. A named bundle of component
+  ingredients (e.g. "taco seasoning mix") used the same way a canonical
+  `Ingredient` is, with its own quantity/unit of its own. Its components are the
+  **CombinedIngredientItem** rows (`combined_ingredient_items`, composite key
+  `combined_ingredient_id` + `ingredient_id`) — `quantity` (optional, ≥0 if set),
+  `unit_id` (optional FK → `units`), `note`. Deleting a combined ingredient
+  cascades to its items; deleting an `Ingredient` or `Unit` still referenced by
+  an item is rejected (`ON DELETE RESTRICT`). Unlike `RecipeIngredient` below,
+  full CRUD for this relationship **is implemented** — see
+  `internal/store/combined_ingredients.go` and the "Combined ingredients tab"
+  section under [Ingredients page](#ingredients-page-get-ingredients).
+
+  Both tables are already provisioned by
+  [NAS-Images/postgres](https://github.com/SamuelHamann/NAS-Images/tree/main/postgres)
+  — no schema changes needed to deploy this feature.
 - **Unit** (`units`, bigint id) — `name` (required, unique, case-insensitive), `created_at`.
 - **Tag** (`tags`, bigint id) — `name` (required, unique, case-insensitive).
 - **PantryIngredient** (`pantry_ingredients`, UUID id) — `pantry_id` (required, FK
@@ -351,10 +375,13 @@ when no one is signed in.
 | POST   | `/pantry`              | Add a pantry item (form)                                          |
 | POST   | `/pantry/{id}/update`  | Edit a pantry item (form)                                         |
 | POST   | `/pantry/{id}/delete`  | Delete a pantry item (form)                                       |
-| GET    | `/ingredients`             | Ingredients page: alphabetical list with search + tag filter and inline CRUD |
+| GET    | `/ingredients`             | Ingredients page: **Ingredients** tab (alphabetical list, search + tag filter, inline CRUD) and **Combined ingredients** tab (`?tab=combined`), switched client-side without a reload |
 | POST   | `/ingredients`             | Add an ingredient (form)                                          |
 | POST   | `/ingredients/{id}/update` | Edit an ingredient, including its tags (form)                     |
 | POST   | `/ingredients/{id}/delete` | Delete an ingredient (form)                                       |
+| POST   | `/combined-ingredients`             | Add a combined ingredient, including its component items (form) |
+| POST   | `/combined-ingredients/{id}/update` | Edit a combined ingredient and replace its component items (form) |
+| POST   | `/combined-ingredients/{id}/delete` | Delete a combined ingredient (its items cascade) (form)  |
 
 There's no password: the users table is just "who is using this household
 device right now". `/login` doubles as both the sign-in picker and the user
@@ -492,11 +519,49 @@ Query parameters:
 
 | Parameter | Values                             | Default | Description                                                    |
 | --------- | ----------------------------------- | ------- | ---------------------------------------------------------------- |
+| `tab`     | `ingredients` \| `combined`         | `ingredients` | Which tab renders visible on first load (see below); switching tabs afterwards is client-side and doesn't reload |
 | `tags`    | integer (repeat: `?tags=1&tags=2`) | none    | Show only ingredients carrying **any** of these tag IDs (OR semantics) |
 | `error`   | string                              | none    | Flash message rendered as an error banner (set by the CRUD handlers on redirect) |
 
 A search box above the toolbar filters the currently rendered list live,
 client-side, as you type — see [Live search](#live-search) below.
+
+#### Combined ingredients tab (`?tab=combined`)
+
+A second tab on the same page for managing `combined_ingredients` — named
+bundles of component ingredients (e.g. "taco seasoning mix"), each with its
+own quantity/unit/note, made up of one or more `combined_ingredient_items`
+rows (an ingredient + its own optional quantity/unit/note within the bundle).
+
+Both tabs render in the same page load; `templates/scripts.html`'s
+`{{define "tabs-script"}}` intercepts clicks on the tab links to swap panel
+visibility without a reload, keeping `?tab=` in sync via
+`history.replaceState` (bookmarkable). With JS disabled, the tab links still
+work as plain navigations — the server renders the correct panel visible
+from the same `?tab=` param either way.
+
+The "Add combined ingredient" form (and each row's edit form) lets you add or
+remove component-ingredient rows dynamically via
+`{{define "item-rows-script"}}` (also in `templates/scripts.html`) — an "Add
+ingredient" button clones a blank row, and each row has its own remove
+button. Validation (`parseCombinedIngredientForm` in
+`internal/handlers/templates/combined_ingredients_page.go`):
+
+- `name` and the bundle's own `quantity` are required; `quantity` must be ≥0.
+- The bundle's own `unit_id` is **required** — an app-level decision (the
+  column itself is nullable in the schema) since a required quantity with no
+  unit is ambiguous UX, matching the ingredient/pantry forms' existing "pick
+  a unit" requirement.
+- At least one component-ingredient row is required — a combined ingredient
+  with zero components is indistinguishable from a plain `Ingredient`. Not
+  DB-enforced; a one-line relaxation if this proves too strict in practice.
+- Each component row needs an ingredient picked; its `quantity`/`unit_id` are
+  both optional (matching the nullable `combined_ingredient_items` columns —
+  unlike the bundle's own unit, no app-level "required" override here), and
+  a component ingredient can only appear once per bundle.
+- A row left entirely blank (ingredient/quantity/unit/note all empty) is
+  silently skipped, so clicking "Add ingredient" without filling it in is a
+  no-op rather than a validation error.
 
 ### Live search
 

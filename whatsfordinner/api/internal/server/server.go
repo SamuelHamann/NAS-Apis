@@ -160,5 +160,12 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /ingredients/{id}/update", h.IngredientsUpdate)
 	mux.HandleFunc("POST /ingredients/{id}/delete", h.IngredientsDelete)
 
+	// Combined ingredients: bundles of component ingredients with their own
+	// quantity/unit, managed as a second tab on the ingredients page
+	// (?tab=combined) rather than their own GET page.
+	mux.HandleFunc("POST /combined-ingredients", h.CombinedIngredientsCreate)
+	mux.HandleFunc("POST /combined-ingredients/{id}/update", h.CombinedIngredientsUpdate)
+	mux.HandleFunc("POST /combined-ingredients/{id}/delete", h.CombinedIngredientsDelete)
+
 	return s.withMiddleware(mux)
 }

@@ -358,6 +358,7 @@
     white-space: nowrap;
     -webkit-tap-highlight-color: transparent;
   }
+  .wfd-btn svg { width: 18px; height: 18px; flex: none; }
   .wfd-btn--primary {
     background: var(--wfd-primary);
     color: var(--wfd-primary-contrast);
@@ -385,6 +386,55 @@
     padding: 0.75rem 1rem;
     margin-bottom: 1.25rem;
     font-weight: 600;
+    font-size: 0.9rem;
+  }
+
+  /* --- Tabs (e.g. Ingredients / Combined ingredients) --- */
+  .wfd-tabs {
+    display: flex;
+    gap: 0.25rem;
+    border-bottom: 1px solid var(--wfd-border);
+    margin-bottom: 1.25rem;
+  }
+  .wfd-tabs__btn {
+    padding: 0.65rem 1rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--wfd-text-muted);
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .wfd-tabs__btn:hover { color: var(--wfd-text); }
+  .wfd-tabs__btn[aria-selected="true"] {
+    color: var(--wfd-primary);
+    border-bottom-color: var(--wfd-primary);
+  }
+
+  /* --- Dynamic item rows (e.g. combined-ingredient component picker) --- */
+  .wfd-item-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .wfd-item-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 2fr auto;
+    gap: 0.4rem;
+    align-items: center;
+  }
+  @media (max-width: 559px) {
+    .wfd-item-row { grid-template-columns: 1fr; }
+  }
+  .wfd-item-row select,
+  .wfd-item-row input {
+    height: 40px;
+    padding-inline: 0.6rem;
+    border-radius: var(--wfd-radius-sm);
+    border: 1px solid var(--wfd-border);
+    background: var(--wfd-surface);
+    color: var(--wfd-text);
+    font: inherit;
     font-size: 0.9rem;
   }
 

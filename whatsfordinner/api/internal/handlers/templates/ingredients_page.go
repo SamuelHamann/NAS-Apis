@@ -25,6 +25,21 @@ type IngredientsPageData struct {
 	// form's tag checkboxes.
 	Tags []models.Tag
 
+	// ActiveTab is "ingredients" (default) or "combined" — which panel the
+	// tab switcher shows first on page load (before any client-side JS
+	// takes over). See templates/scripts.html's "tabs-script".
+	ActiveTab string
+
+	// CombinedItems is every combined ingredient, alphabetical, each with
+	// its component items.
+	CombinedItems []store.CombinedIngredientDetailRow
+
+	// Ingredients and Units back the combined-ingredient form's dropdowns
+	// (one ingredient/unit picker per component-item row, plus the
+	// combined ingredient's own unit picker).
+	Ingredients []models.Ingredient
+	Units       []models.Unit
+
 	Error string
 }
 
@@ -34,8 +49,12 @@ func (h *Handler) IngredientsPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	data := IngredientsPageData{
-		PageData: h.newPageData(r, "Ingredients", "ingredients"),
-		Error:    r.URL.Query().Get("error"),
+		PageData:  h.newPageData(r, "Ingredients", "ingredients"),
+		Error:     r.URL.Query().Get("error"),
+		ActiveTab: "ingredients",
+	}
+	if r.URL.Query().Get("tab") == "combined" {
+		data.ActiveTab = "combined"
 	}
 
 	// Build the tag filter set from ?tags=1&tags=2 (repeated param).
@@ -48,8 +67,9 @@ func (h *Handler) IngredientsPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Tag options for the toolbar and the create/edit form. Same size cap
-	// as the pantry/recipes pages — a household never has hundreds of tags.
+	// Tag/ingredient/unit options for the toolbar and both tabs' create/edit
+	// forms. Same size cap as the pantry/recipes pages — a household never
+	// has hundreds of tags/ingredients/units.
 	const dropdownPageSize = 200
 	var err error
 	if data.Tags, err = h.store.ListTags(ctx, dropdownPageSize, 0); err != nil {
@@ -57,10 +77,26 @@ func (h *Handler) IngredientsPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load tags", http.StatusInternalServerError)
 		return
 	}
+	if data.Ingredients, err = h.store.ListIngredients(ctx, dropdownPageSize, 0); err != nil {
+		h.logger.Error("list ingredients", "error", err)
+		http.Error(w, "failed to load form data", http.StatusInternalServerError)
+		return
+	}
+	if data.Units, err = h.store.ListUnits(ctx, dropdownPageSize, 0); err != nil {
+		h.logger.Error("list units", "error", err)
+		http.Error(w, "failed to load form data", http.StatusInternalServerError)
+		return
+	}
 
 	if data.Items, err = h.store.ListIngredientsDetailed(ctx, filter); err != nil {
 		h.logger.Error("list ingredients", "error", err)
 		http.Error(w, "failed to load ingredients", http.StatusInternalServerError)
+		return
+	}
+
+	if data.CombinedItems, err = h.store.ListCombinedIngredientsDetailed(ctx); err != nil {
+		h.logger.Error("list combined ingredients", "error", err)
+		http.Error(w, "failed to load combined ingredients", http.StatusInternalServerError)
 		return
 	}
 
@@ -191,7 +227,7 @@ func humanIngredientStoreError(err error) string {
 	case errors.Is(err, store.ErrConflict):
 		return "an ingredient with that name already exists"
 	case errors.Is(err, store.ErrReference):
-		return "that ingredient is still used by a recipe or pantry"
+		return "that ingredient is still used by a recipe, pantry, or combined ingredient"
 	default:
 		return "something went wrong, please try again"
 	}

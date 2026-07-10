@@ -11,76 +11,131 @@
 
   <main class="wfd-main wfd-container">
     <h1 class="wfd-page-title">Ingredients</h1>
-    <p class="wfd-page-subtitle">{{len .Items}} ingredient{{if ne (len .Items) 1}}s{{end}}, alphabetical.</p>
 
     {{if .Error}}
     <p class="wfd-error-banner">{{.Error}}</p>
     {{end}}
 
-    {{/* --- Toolbar: search, tag filter, add-ingredient ------------------
+    {{/* --- Tab switcher: Ingredients / Combined ingredients ------------
 
-         Same nesting-safe layout as the pantry/recipes pages: the filter
-         form (id="ingredients-view") is a zero-content sibling of the
-         visible toolbar rather than wrapping it, so every filter input opts
-         back in via `form="ingredients-view"` and the Add-ingredient block
-         is free to be its own POST form. See the comment on pantry.html forà
-         the full nested-<form> explanation. */}}
-    <form id="ingredients-view" method="get" action="/ingredients" hidden></form>
-
-    <div class="wfd-toolbar">
-      <div class="wfd-toolbar__row wfd-toolbar__row--between">
-        <label class="wfd-search">
-          {{template "icon-search"}}
-          <input type="search" placeholder="Search ingredients…" aria-label="Search ingredients"
-                 data-search-input="#ingredients-list" data-search-empty="#ingredients-search-empty"
-                 autocomplete="off" />
-        </label>
-
-        <details class="wfd-create">
-          <summary class="wfd-btn wfd-btn--primary">
-            {{template "icon-plus"}}
-            <span>Add ingredient</span>
-          </summary>
-          {{template "ingredient_form" (dict "Action" "/ingredients" "IngredientsPageData" . "Item" nil)}}
-        </details>
-      </div>
-
-      {{if .Tags}}
-      <div class="wfd-toolbar__row">
-        <span class="wfd-toolbar__group-label" style="display:inline-flex;align-items:center;gap:0.35rem;">
-          {{template "icon-filter"}} Tags
-        </span>
-        <div class="wfd-tag-filter">
-          {{range .Tags}}
-          <label class="wfd-tag-filter__chip">
-            <input type="checkbox" name="tags" value="{{.ID}}" form="ingredients-view" {{if index $.SelectedTagIDs .ID}}checked{{end}} onchange="this.form.submit()" />
-            <span>{{.Name}}</span>
-          </label>
-          {{end}}
-        </div>
-      </div>
-      {{end}}
+         Both panels render in the same page load; templates/scripts.html's
+         "tabs-script" intercepts clicks on these links to swap panel
+         visibility without a reload. The href/query-param + server-rendered
+         `hidden` attribute below is the no-JS fallback: a plain navigation
+         to ?tab=combined still lands on the right panel. */}}
+    <div class="wfd-tabs" role="tablist">
+      <a href="/ingredients?tab=ingredients" class="wfd-tabs__btn" data-tab-target="ingredients-panel"
+         role="tab" aria-selected="{{if ne .ActiveTab "combined"}}true{{else}}false{{end}}">Ingredients</a>
+      <a href="/ingredients?tab=combined" class="wfd-tabs__btn" data-tab-target="combined-panel"
+         role="tab" aria-selected="{{if eq .ActiveTab "combined"}}true{{else}}false{{end}}">Combined ingredients</a>
     </div>
 
-    {{/* --- Content --------------------------------------------------- */}}
-    {{if not .Items}}
-      <p class="wfd-list-empty">
-        {{if .SelectedTagIDs}}No ingredients match this tag filter.
-        {{else}}No ingredients yet — use “Add ingredient” to add your first one.{{end}}
-      </p>
-    {{else}}
-      <section class="wfd-status-card">
-        <div id="ingredients-list">
-          {{range .Items}}
-            {{template "ingredient_item" (dict "Item" . "IngredientsPageData" $)}}
-          {{end}}
+    <section id="ingredients-panel" class="wfd-tabs__panel" data-tab-panel {{if eq .ActiveTab "combined"}}hidden{{end}}>
+      <p class="wfd-page-subtitle">{{len .Items}} ingredient{{if ne (len .Items) 1}}s{{end}}, alphabetical.</p>
+
+      {{/* --- Toolbar: search, tag filter, add-ingredient ------------------
+
+           Same nesting-safe layout as the pantry/recipes pages: the filter
+           form (id="ingredients-view") is a zero-content sibling of the
+           visible toolbar rather than wrapping it, so every filter input opts
+           back in via `form="ingredients-view"` and the Add-ingredient block
+           is free to be its own POST form. See the comment on pantry.html forà
+           the full nested-<form> explanation. */}}
+      <form id="ingredients-view" method="get" action="/ingredients" hidden></form>
+
+      <div class="wfd-toolbar">
+        <div class="wfd-toolbar__row wfd-toolbar__row--between">
+          <label class="wfd-search">
+            {{template "icon-search"}}
+            <input type="search" placeholder="Search ingredients…" aria-label="Search ingredients"
+                   data-search-input="#ingredients-list" data-search-empty="#ingredients-search-empty"
+                   autocomplete="off" />
+          </label>
+
+          <details class="wfd-create">
+            <summary class="wfd-btn wfd-btn--primary">
+              {{template "icon-plus"}}
+              <span>Add ingredient</span>
+            </summary>
+            {{template "ingredient_form" (dict "Action" "/ingredients" "IngredientsPageData" . "Item" nil)}}
+          </details>
         </div>
-      </section>
-      <p class="wfd-list-empty" id="ingredients-search-empty" hidden>No ingredients match your search.</p>
-    {{end}}
+
+        {{if .Tags}}
+        <div class="wfd-toolbar__row">
+          <span class="wfd-toolbar__group-label" style="display:inline-flex;align-items:center;gap:0.35rem;">
+            {{template "icon-filter"}} Tags
+          </span>
+          <div class="wfd-tag-filter">
+            {{range .Tags}}
+            <label class="wfd-tag-filter__chip">
+              <input type="checkbox" name="tags" value="{{.ID}}" form="ingredients-view" {{if index $.SelectedTagIDs .ID}}checked{{end}} onchange="this.form.submit()" />
+              <span>{{.Name}}</span>
+            </label>
+            {{end}}
+          </div>
+        </div>
+        {{end}}
+      </div>
+
+      {{/* --- Content --------------------------------------------------- */}}
+      {{if not .Items}}
+        <p class="wfd-list-empty">
+          {{if .SelectedTagIDs}}No ingredients match this tag filter.
+          {{else}}No ingredients yet — use “Add ingredient” to add your first one.{{end}}
+        </p>
+      {{else}}
+        <section class="wfd-status-card">
+          <div id="ingredients-list">
+            {{range .Items}}
+              {{template "ingredient_item" (dict "Item" . "IngredientsPageData" $)}}
+            {{end}}
+          </div>
+        </section>
+        <p class="wfd-list-empty" id="ingredients-search-empty" hidden>No ingredients match your search.</p>
+      {{end}}
+    </section>
+
+    <section id="combined-panel" class="wfd-tabs__panel" data-tab-panel {{if ne .ActiveTab "combined"}}hidden{{end}}>
+      <p class="wfd-page-subtitle">{{len .CombinedItems}} combined ingredient{{if ne (len .CombinedItems) 1}}s{{end}}.</p>
+
+      <div class="wfd-toolbar">
+        <div class="wfd-toolbar__row wfd-toolbar__row--between">
+          <label class="wfd-search">
+            {{template "icon-search"}}
+            <input type="search" placeholder="Search combined ingredients…" aria-label="Search combined ingredients"
+                   data-search-input="#combined-list" data-search-empty="#combined-search-empty"
+                   autocomplete="off" />
+          </label>
+
+          <details class="wfd-create">
+            <summary class="wfd-btn wfd-btn--primary">
+              {{template "icon-plus"}}
+              <span>Add combined ingredient</span>
+            </summary>
+            {{template "combined_ingredient_form" (dict "Action" "/combined-ingredients" "IngredientsPageData" . "Item" nil)}}
+          </details>
+        </div>
+      </div>
+
+      {{if not .CombinedItems}}
+        <p class="wfd-list-empty">No combined ingredients yet — use “Add combined ingredient” to add your first one.</p>
+      {{else}}
+        <section class="wfd-status-card">
+          <div id="combined-list">
+            {{range .CombinedItems}}
+              {{template "combined_ingredient_item" (dict "Item" . "IngredientsPageData" $)}}
+            {{end}}
+          </div>
+        </section>
+        <p class="wfd-list-empty" id="combined-search-empty" hidden>No combined ingredients match your search.</p>
+      {{end}}
+    </section>
   </main>
 
   {{template "search-script" .}}
+  {{template "tabs-script" .}}
+  {{template "item-rows-script" .}}
 </body>
 </html>
 
@@ -159,4 +214,154 @@
     <button type="submit" class="wfd-btn wfd-btn--primary">{{if $item}}Save{{else}}Add ingredient{{end}}</button>
   </div>
 </form>
+{{end}}
+
+{{/* -----------------------------------------------------------------------
+     One combined-ingredient row + inline edit form. Expects a dict with:
+        Item                 (store.CombinedIngredientDetailRow)
+        IngredientsPageData  (the outer .)
+   ----------------------------------------------------------------------- */}}
+{{define "combined_ingredient_item"}}
+{{ $item := .Item }}
+{{ $data := .IngredientsPageData }}
+<div class="wfd-status-item" data-search-name="{{$item.Name}}">
+  <div class="wfd-status-item__body">
+    <div class="wfd-status-item__title">
+      <span>{{$item.Name}}</span>
+      <span class="wfd-pantry-item__qty">{{$item.Quantity}}{{if $item.UnitName}} {{deref $item.UnitName}}{{end}}</span>
+    </div>
+    {{if $item.Note}}
+    <div class="wfd-status-item__meta">
+      <span>Note <strong>{{deref $item.Note}}</strong></span>
+    </div>
+    {{end}}
+    {{if $item.Items}}
+    <div class="wfd-status-item__tags">
+      {{range $item.Items}}
+        <span class="wfd-tag-chip">{{.IngredientName}}{{if .Quantity}} ({{deref .Quantity}}{{if .UnitName}} {{deref .UnitName}}{{end}}){{end}}</span>
+      {{end}}
+    </div>
+    {{end}}
+  </div>
+
+  <div class="wfd-pantry-item__actions">
+    <form method="post" action="/combined-ingredients/{{$item.ID}}/delete" onsubmit="return confirm('Delete this combined ingredient?');">
+      <button type="submit" class="wfd-icon-btn" aria-label="Delete {{$item.Name}}">{{template "icon-trash"}}</button>
+    </form>
+
+    <details class="wfd-pantry-item__edit">
+      <summary class="wfd-icon-btn" aria-label="Edit {{$item.Name}}">{{template "icon-pencil"}}</summary>
+      {{template "combined_ingredient_form" (dict "Action" (printf "/combined-ingredients/%d/update" $item.ID) "IngredientsPageData" $data "Item" $item)}}
+    </details>
+  </div>
+</div>
+{{end}}
+
+{{/* -----------------------------------------------------------------------
+     Create/update form for a combined ingredient. Expects a dict with:
+        Action               (form target URL)
+        IngredientsPageData  (the outer .; used to render the Units/
+                              Ingredients dropdown option lists)
+        Item                 (a store.CombinedIngredientDetailRow, or nil
+                              for create)
+   ----------------------------------------------------------------------- */}}
+{{define "combined_ingredient_form"}}
+{{ $action := .Action }}
+{{ $data := .IngredientsPageData }}
+{{ $item := .Item }}
+<form method="post" action="{{$action}}" class="wfd-pantry-form">
+  <label>
+    Name
+    <input type="text" name="name" required maxlength="255"
+           value="{{if $item}}{{$item.Name}}{{end}}" />
+  </label>
+
+  <label>
+    Quantity
+    <input type="number" name="quantity" step="0.001" min="0" required
+           value="{{if $item}}{{$item.Quantity}}{{end}}" />
+  </label>
+
+  <label>
+    Unit
+    <select name="unit_id" required>
+      <option value="" disabled {{if not $item}}selected{{end}}>Pick a unit…</option>
+      {{range $data.Units}}
+        <option value="{{.ID}}" {{if and $item $item.UnitID (eq (deref $item.UnitID) .ID)}}selected{{end}}>{{.Name}}</option>
+      {{end}}
+    </select>
+  </label>
+
+  <label class="wfd-pantry-form__wide">
+    Note
+    <input type="text" name="note" maxlength="255"
+           value="{{if and $item $item.Note}}{{deref $item.Note}}{{end}}" />
+  </label>
+
+  <div class="wfd-pantry-form__wide">
+    <label>Ingredients in this bundle</label>
+    <div class="wfd-item-rows" data-item-rows>
+      <div data-item-rows-list>
+        {{if $item}}
+          {{if $item.Items}}
+            {{range $item.Items}}
+              {{template "combined_ingredient_item_row" (dict "IngredientsPageData" $data "ItemRow" .)}}
+            {{end}}
+          {{else}}
+            {{template "combined_ingredient_item_row" (dict "IngredientsPageData" $data "ItemRow" nil)}}
+          {{end}}
+        {{else}}
+          {{template "combined_ingredient_item_row" (dict "IngredientsPageData" $data "ItemRow" nil)}}
+        {{end}}
+      </div>
+      <template data-item-row-template>
+        {{template "combined_ingredient_item_row" (dict "IngredientsPageData" $data "ItemRow" nil)}}
+      </template>
+      <button type="button" class="wfd-btn wfd-btn--ghost" data-item-row-add>
+        {{template "icon-plus"}}
+        <span>Add ingredient</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="wfd-pantry-form__actions">
+    <button type="submit" class="wfd-btn wfd-btn--primary">{{if $item}}Save{{else}}Add combined ingredient{{end}}</button>
+  </div>
+</form>
+{{end}}
+
+{{/* -----------------------------------------------------------------------
+     One repeatable component-ingredient row within a combined_ingredient_form.
+     Expects a dict with:
+        IngredientsPageData  (the outer .; used for the Ingredients/Units
+                              dropdown option lists)
+        ItemRow              (a store.CombinedIngredientItemDetailRow, or
+                              nil for a blank starter/cloned row)
+   ----------------------------------------------------------------------- */}}
+{{define "combined_ingredient_item_row"}}
+{{ $data := .IngredientsPageData }}
+{{ $row := .ItemRow }}
+<div class="wfd-item-row" data-item-row>
+  <select name="item_ingredient_id" required>
+    <option value="" disabled {{if not $row}}selected{{end}}>Pick an ingredient…</option>
+    {{range $data.Ingredients}}
+      <option value="{{.ID}}" {{if and $row (eq $row.IngredientID .ID)}}selected{{end}}>{{.Name}}</option>
+    {{end}}
+  </select>
+
+  <input type="number" name="item_quantity" step="0.001" min="0" placeholder="Qty"
+         value="{{if and $row $row.Quantity}}{{deref $row.Quantity}}{{end}}" />
+
+  <select name="item_unit_id">
+    <option value="">— none —</option>
+    {{range $data.Units}}
+      <option value="{{.ID}}" {{if and $row $row.UnitID (eq (deref $row.UnitID) .ID)}}selected{{end}}>{{.Name}}</option>
+    {{end}}
+  </select>
+
+  <input type="text" name="item_note" maxlength="255" placeholder="Note"
+         value="{{if and $row $row.Note}}{{deref $row.Note}}{{end}}" />
+
+  <button type="button" class="wfd-icon-btn" aria-label="Remove ingredient" data-item-row-remove>{{template "icon-trash"}}</button>
+</div>
 {{end}}

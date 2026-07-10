@@ -35,7 +35,9 @@ available while that migration is in progress.
 | GET       | `/recipes/{id}`                   | Recipe detail page (HTML): ingredients (missing ones highlighted) + instructions |
 | CRUD      | `/recipes`, `/recipes/{id}`       | Recipes (bigint id)                    |
 | GET       | `/recipes/cookable`               | Recipes cookable from pantry stock   |
+| GET       | `/ingredients`                    | Ingredients page (HTML): Ingredients tab + Combined ingredients tab (`?tab=combined`), switched client-side |
 | CRUD      | `/ingredients`, `/ingredients/{id}` | Canonical ingredients (integer id) |
+| POST      | `/combined-ingredients`, `/combined-ingredients/{id}/update`, `/combined-ingredients/{id}/delete` | Combined ingredients: bundles of component ingredients with their own quantity/unit (HTML forms) |
 | CRUD      | `/units`, `/units/{id}`           | Measurement units (integer id)       |
 | CRUD      | `/locations`, `/locations/{id}`   | Food storage locations (integer id)  |
 | CRUD      | `/tags`, `/tags/{id}`             | Recipe tags (integer id)             |

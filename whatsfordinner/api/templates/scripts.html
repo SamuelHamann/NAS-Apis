@@ -56,3 +56,100 @@
 })();
 </script>
 {{end}}
+
+{{/*
+    Shared vanilla-JS tab switcher (currently ingredients.html: "Ingredients"
+    vs "Combined ingredients"). Include once, alongside search-script, via
+    {{template "tabs-script" .}}.
+
+    Wire-up is via data attributes: every tab link carries data-tab-target
+    pointing at the id of the panel it activates, and every panel carries
+    data-tab-panel. Clicking a tab link swaps which panel is hidden without a
+    page reload, syncing ?tab=... into the URL via history.replaceState so
+    the current tab stays bookmarkable/shareable.
+
+    Degrades gracefully with JS disabled: the tab links are plain
+    <a href="?tab=...">, and the server already renders the correct panel's
+    `hidden` attribute from that same query param, so a full navigation still
+    lands on the right tab.
+*/}}
+{{define "tabs-script"}}
+<script>
+(function () {
+  var tabs = document.querySelectorAll('[data-tab-target]');
+  if (!tabs.length) return;
+
+  function activate(targetId) {
+    document.querySelectorAll('[data-tab-panel]').forEach(function (panel) {
+      panel.hidden = panel.id !== targetId;
+    });
+    tabs.forEach(function (tab) {
+      tab.setAttribute('aria-selected', tab.getAttribute('data-tab-target') === targetId ? 'true' : 'false');
+    });
+  }
+
+  tabs.forEach(function (tab) {
+    tab.addEventListener('click', function (event) {
+      var targetId = tab.getAttribute('data-tab-target');
+      if (!document.getElementById(targetId)) return;
+      event.preventDefault();
+      activate(targetId);
+
+      var url = new URL(tab.href, window.location.href);
+      history.replaceState(null, '', url.search + url.hash);
+    });
+  });
+})();
+</script>
+{{end}}
+
+{{/*
+    Shared vanilla-JS repeatable-row picker (currently ingredients.html's
+    combined-ingredient form: one row per component ingredient, each with its
+    own quantity/unit/note). Include once, alongside search-script, via
+    {{template "item-rows-script" .}}.
+
+    A page can have several independent instances (the "Add combined
+    ingredient" form plus each row's own inline edit form) — every
+    [data-item-rows] container is wired up separately.
+
+    Wire-up is via data attributes: [data-item-rows-list] holds the current
+    rows, <template data-item-row-template> holds one blank row to clone,
+    [data-item-row-add] adds a row, and every row (server-rendered or cloned)
+    carries [data-item-row] with a [data-item-row-remove] button inside it.
+
+    Row fields are submitted as repeated same-name inputs
+    (item_ingredient_id, item_quantity, item_unit_id, item_note), one set per
+    row in DOM order — so removing a row must delete its DOM node entirely
+    (not just hide it) to keep the server's positional parsing aligned.
+
+    Degrades gracefully with JS disabled: the form still submits whatever
+    rows were server-rendered; there's just no way to add/remove one.
+*/}}
+{{define "item-rows-script"}}
+<script>
+(function () {
+  document.querySelectorAll('[data-item-rows]').forEach(function (container) {
+    var list = container.querySelector('[data-item-rows-list]');
+    var template = container.querySelector('template[data-item-row-template]');
+    var addBtn = container.querySelector('[data-item-row-add]');
+    if (!list || !template || !addBtn) return;
+
+    function wireRemove(row) {
+      var removeBtn = row.querySelector('[data-item-row-remove]');
+      if (removeBtn) {
+        removeBtn.addEventListener('click', function () { row.remove(); });
+      }
+    }
+
+    list.querySelectorAll('[data-item-row]').forEach(wireRemove);
+
+    addBtn.addEventListener('click', function () {
+      var fragment = template.content.cloneNode(true);
+      list.appendChild(fragment);
+      wireRemove(list.lastElementChild);
+    });
+  });
+})();
+</script>
+{{end}}
