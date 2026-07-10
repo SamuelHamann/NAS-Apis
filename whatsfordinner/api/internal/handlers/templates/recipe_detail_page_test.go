@@ -44,6 +44,11 @@ func recipeDetailPageFixture(t *testing.T) RecipeDetailPageData {
 		Pantries: []models.Pantry{
 			{ID: 1, Name: "Main kitchen"},
 		},
+		Units: []models.Unit{
+			{ID: 14, Name: "bunch"},
+			{ID: 20, Name: "cup"},
+		},
+		CookCombinedUnitID: 14,
 	}
 }
 
@@ -107,6 +112,100 @@ func TestRecipeDetailTemplateRendersRecipe(t *testing.T) {
 		"<li>Boil the pasta</li>",
 		"<li>Simmer the sauce</li>",
 		"<li>Toss together</li>",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("expected %q in rendered body", want)
+		}
+	}
+}
+
+func TestRecipeDetailTemplateRendersCookDialog(t *testing.T) {
+	ts, ok := parseTestTemplates(t)["recipe_detail.html"]
+	if !ok {
+		t.Fatal("recipe_detail.html not found in template cache")
+	}
+
+	data := recipeDetailPageFixture(t)
+	data.CookMultiplier = "1"
+
+	var buf bytes.Buffer
+	if err := ts.Execute(&buf, data); err != nil {
+		t.Fatalf("execute recipe_detail.html: %v", err)
+	}
+	body := buf.String()
+
+	for _, want := range []string{
+		"Cook this recipe",
+		`id="cook-dialog"`,
+		`action="/recipes/101/cook"`,
+		`name="pantry_id"`,
+		`name="multiplier"`,
+		`id="cook-create-combined"`,
+		`name="create_combined"`,
+		`name="combined_quantity"`,
+		`name="combined_unit_id"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("expected %q in rendered body", want)
+		}
+	}
+	if strings.Contains(body, "cook-dialog').showModal()</script>") {
+		t.Error("expected the dialog not to auto-open when there are no missing ingredients")
+	}
+
+	// The default combined-ingredient unit (bunch, id 14) is preselected;
+	// the other unit (cup, id 20) is not.
+	if !strings.Contains(body, `<option value="14" selected>bunch</option>`) {
+		t.Error("expected the default unit (bunch) to render selected")
+	}
+	if strings.Contains(body, `<option value="20" selected>cup</option>`) {
+		t.Error("expected the non-default unit (cup) not to render selected")
+	}
+}
+
+func TestRecipeDetailTemplateNoPantriesHidesCookButton(t *testing.T) {
+	ts, ok := parseTestTemplates(t)["recipe_detail.html"]
+	if !ok {
+		t.Fatal("recipe_detail.html not found in template cache")
+	}
+
+	data := recipeDetailPageFixture(t)
+	data.Pantries = nil
+	data.SelectedPantry = nil
+
+	var buf bytes.Buffer
+	if err := ts.Execute(&buf, data); err != nil {
+		t.Fatalf("execute recipe_detail.html: %v", err)
+	}
+	body := buf.String()
+
+	if strings.Contains(body, "Cook this recipe") {
+		t.Error("expected the Cook button to be hidden when there are no pantries")
+	}
+}
+
+func TestRecipeDetailTemplateShowsMissingIngredientConfirmation(t *testing.T) {
+	ts, ok := parseTestTemplates(t)["recipe_detail.html"]
+	if !ok {
+		t.Fatal("recipe_detail.html not found in template cache")
+	}
+
+	data := recipeDetailPageFixture(t)
+	data.CookMultiplier = "1"
+	data.CookMissingNames = []string{"Basil", "Tomato"}
+
+	var buf bytes.Buffer
+	if err := ts.Execute(&buf, data); err != nil {
+		t.Fatalf("execute recipe_detail.html: %v", err)
+	}
+	body := buf.String()
+
+	for _, want := range []string{
+		"Missing from the selected pantry",
+		"Basil, Tomato",
+		`name="confirmed" value="true"`,
+		"Cook anyway",
+		"cook-dialog').showModal()",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("expected %q in rendered body", want)

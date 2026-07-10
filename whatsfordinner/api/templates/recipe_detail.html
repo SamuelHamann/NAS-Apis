@@ -25,12 +25,97 @@
       <p class="wfd-page-subtitle">{{.Recipe.Description}}</p>
     {{end}}
 
+    {{if .Error}}
+    <p class="wfd-error-banner">{{.Error}}</p>
+    {{end}}
+
     <div class="wfd-recipe-meta">
       {{if .Recipe.Servings}}<span>Serves <strong>{{.Recipe.Servings}}</strong></span>{{end}}
       {{if .Recipe.PrepTimeMinutes}}<span>Prep <strong>{{.Recipe.PrepTimeMinutes}}m</strong></span>{{end}}
       {{if .Recipe.CookTimeMinutes}}<span>Cook <strong>{{.Recipe.CookTimeMinutes}}m</strong></span>{{end}}
       {{if .SelectedPantry}}<span>Checked against <strong>{{.SelectedPantry.Name}}</strong></span>{{end}}
     </div>
+
+    {{if .Pantries}}
+    <button type="button" class="wfd-btn wfd-btn--primary" onclick="document.getElementById('cook-dialog').showModal()">
+      {{template "icon-bolt"}}
+      <span>Cook this recipe</span>
+    </button>
+
+    {{/* --- Cook dialog ---------------------------------------------------
+
+         A native <dialog>, opened via the plain onclick above (no shared
+         script needed — it's a one-off wire-up, unlike the tab/item-row
+         behaviour in scripts.html). Submitting posts to /recipes/{id}/cook;
+         RecipeCook (recipe_cook.go) redirects back here — preserving the
+         dialog's choices via the cook_* query params consumed by
+         RecipeDetailPage — either on a validation error, or when ingredients
+         are missing from the chosen pantry and need a "cook anyway"
+         confirmation (CookMissingNames non-empty below), in which case the
+         inline script at the bottom of this block reopens the dialog. */}}
+    <dialog id="cook-dialog" class="wfd-dialog">
+      <form method="post" action="/recipes/{{.Recipe.ID}}/cook" class="wfd-pantry-form">
+        <h2 class="wfd-dialog__title wfd-pantry-form__wide">Cook {{.Recipe.Name}}</h2>
+
+        {{if .CookMissingNames}}
+        <p class="wfd-error-banner wfd-pantry-form__wide">
+          Missing from the selected pantry: {{range $i, $n := .CookMissingNames}}{{if $i}}, {{end}}{{$n}}{{end}}. Cook anyway?
+        </p>
+        <input type="hidden" name="confirmed" value="true" />
+        {{end}}
+
+        <label>
+          Pantry
+          <select name="pantry_id" required>
+            {{range .Pantries}}
+              <option value="{{.ID}}" {{if and $.SelectedPantry (eq $.SelectedPantry.ID .ID)}}selected{{end}}>{{.Name}}</option>
+            {{end}}
+          </select>
+        </label>
+
+        <label>
+          Quantity to cook
+          <input type="number" name="multiplier" step="0.01" min="0.01" required value="{{.CookMultiplier}}" />
+        </label>
+
+        <label class="wfd-pantry-form__wide wfd-checkbox-label">
+          <input type="checkbox" name="create_combined" id="cook-create-combined" {{if .CookCreateCombined}}checked{{end}} />
+          Create a combined ingredient from this recipe
+        </label>
+
+        {{/* Only relevant (and only submitted) while the checkbox above is
+             checked. Hidden via display:none rather than the `hidden`
+             attribute so `required` below is exempt from constraint
+             validation while hidden (per the HTML spec, a display:none
+             field isn't a candidate for constraint validation) and only
+             enforced once the :has() rule in styles.html reveals it. */}}
+        <div class="wfd-pantry-form__wide wfd-combined-fields" data-combined-fields>
+          <label>
+            Combined ingredient amount
+            <input type="number" name="combined_quantity" step="0.01" min="0.01" required value="{{.CookCombinedQuantity}}" />
+          </label>
+          <label>
+            Combined ingredient unit
+            <select name="combined_unit_id">
+              <option value="">— none —</option>
+              {{range .Units}}
+                <option value="{{.ID}}" {{if eq $.CookCombinedUnitID .ID}}selected{{end}}>{{.Name}}</option>
+              {{end}}
+            </select>
+          </label>
+        </div>
+
+        <div class="wfd-pantry-form__actions">
+          <button type="submit" class="wfd-btn wfd-btn--ghost" formmethod="dialog">Cancel</button>
+          <button type="submit" class="wfd-btn wfd-btn--primary">{{if .CookMissingNames}}Cook anyway{{else}}Cook{{end}}</button>
+        </div>
+      </form>
+    </dialog>
+
+    {{if .CookMissingNames}}
+    <script>document.getElementById('cook-dialog').showModal();</script>
+    {{end}}
+    {{end}}
 
     {{if .Tags}}
     <div class="wfd-status-item__tags">

@@ -771,6 +771,35 @@
     font: inherit;
     font-size: 1rem;
   }
+  /* A checkbox field (e.g. "Create a combined ingredient from this recipe")
+     shouldn't stack under its own label text or inherit the text-input
+     sizing above — lay it out as a single row with the box at its native
+     size instead. */
+  .wfd-pantry-form label.wfd-checkbox-label {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .wfd-pantry-form input[type="checkbox"] {
+    height: auto;
+    width: auto;
+    padding-inline: 0;
+    border: none;
+    background: none;
+    flex: none;
+  }
+  /* Combined-ingredient amount/unit fields (e.g. the cook dialog): hidden
+     until "Create a combined ingredient" is checked, using :has() the same
+     way .wfd-tag-filter__chip does above — no JS needed. */
+  .wfd-combined-fields {
+    display: none;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+  }
+  .wfd-pantry-form:has(#cook-create-combined:checked) .wfd-combined-fields {
+    display: flex;
+  }
+  .wfd-combined-fields label { flex: 1 1 160px; }
   .wfd-pantry-form input:focus-visible,
   .wfd-pantry-form select:focus-visible {
     outline: 2px solid var(--wfd-primary);
@@ -958,6 +987,31 @@
     margin-bottom: 0.75rem;
   }
   .wfd-recipe-meta strong { color: var(--wfd-text); font-weight: 600; }
+
+  /* --- Dialog (e.g. "Cook this recipe") ----------------------------------
+     Styling a native <dialog>: the browser default border/padding is reset
+     so it matches this app's card look, and ::backdrop dims the page behind
+     it. Opened/closed via plain showModal()/formmethod="dialog" calls in
+     the template — no shared script needed for a single one-off dialog. */
+  .wfd-dialog {
+    margin: auto;
+    padding: 1.25rem;
+    max-width: 420px;
+    width: calc(100% - 2rem);
+    border: 1px solid var(--wfd-border);
+    border-radius: var(--wfd-radius-lg);
+    background: var(--wfd-surface);
+    color: var(--wfd-text);
+    box-shadow: var(--wfd-shadow);
+  }
+  .wfd-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.45);
+  }
+  .wfd-dialog__title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin: 0 0 0.25rem;
+  }
 
   .wfd-recipe-section { margin-top: 2rem; }
   .wfd-section-title {

@@ -143,6 +143,12 @@ func (s *Server) Routes() http.Handler {
 	// instructions for a single recipe. See templates/recipe_detail.html.
 	mux.HandleFunc("GET /recipes/{id}", h.RecipeDetailPage)
 
+	// Cook a recipe: decrements the chosen pantry's stock for its
+	// ingredients (scaled by a multiplier, floored at zero), records/updates
+	// past_cooked_recipes, and optionally folds the ingredients into a
+	// combined ingredient named after the recipe. See recipe_cook.go.
+	mux.HandleFunc("POST /recipes/{id}/cook", h.RecipeCook)
+
 	// Pantry page: grouped, colour-coded list of the selected pantry's
 	// contents, with sort/filter controls and inline CRUD via HTML forms.
 	// The picker at ?pantry_id=... is a placeholder until a session-backed

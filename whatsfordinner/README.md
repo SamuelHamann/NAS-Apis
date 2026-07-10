@@ -124,6 +124,8 @@ whatsfordinner/
 │   │   │   ├── units.go
 │   │   │   ├── tags.go
 │   │   │   ├── pantry.go
+│   │   │   ├── past_cooked.go
+│   │   │   ├── cook.go      # CookRecipe: the /recipes/{id}/cook transaction (pantry decrement + past_cooked upsert + optional combined-ingredient upsert)
 │   │   │   └── users.go
 │   │   ├── server/          # Router, route registration, middleware
 │   │   │   ├── server.go    # Routes() wires every endpoint to a handler
@@ -142,6 +144,7 @@ whatsfordinner/
 │   │       ├── recipes_page.go        # GET /recipes handler
 │   │       ├── recipe_detail_view.go  # Pure ingredient-ordering + instruction-parsing logic
 │   │       ├── recipe_detail_page.go  # GET /recipes/{id} handler
+│   │       ├── recipe_cook.go         # POST /recipes/{id}/cook handler
 │   │       ├── ingredients.go
 │   │       ├── ingredients_page.go    # GET /ingredients + CRUD handlers
 │   │       ├── combined_ingredients_page.go # CRUD for the /ingredients page's "Combined ingredients" tab (no own GET route)
@@ -371,6 +374,7 @@ when no one is signed in.
 | POST   | `/users/{id}/select`   | Sign in as this user (sets the `wfd_user_id` cookie)              |
 | GET    | `/recipes`             | Recipes page: grouped/coloured by pantry-relative readiness, with sort + tag filter |
 | GET    | `/recipes/{id}`        | Recipe detail page: ingredients (missing ones highlighted) + instructions |
+| POST   | `/recipes/{id}/cook`   | Cook the recipe: decrement pantry stock, record it as cooked, optionally save leftovers as a combined ingredient (form) |
 | GET    | `/pantry`              | Pantry page: grouped/coloured stock list with sort + tag filter  |
 | POST   | `/pantry`              | Add a pantry item (form)                                          |
 | POST   | `/pantry/{id}/update`  | Edit a pantry item (form)                                         |
@@ -457,6 +461,49 @@ instructions.
 
 The same `?pantry_id=...` query parameter as the recipes/pantry pages picks
 which pantry the ingredient list is checked against.
+
+#### Cooking a recipe (`POST /recipes/{id}/cook`)
+
+A "Cook this recipe" button (hidden when no pantry exists yet) opens a
+native `<dialog>` — the app's one modal popup, everything else uses inline
+`<details>` reveals or full navigations — with a pantry picker, a "quantity
+to cook" multiplier (e.g. `1.2` for 1.2× the recipe), and a checkbox to also
+save the recipe's ingredients as a combined ingredient. Checking that
+checkbox reveals two more fields — the combined ingredient's own amount and
+unit — hidden/shown purely in CSS via `:has()` (`.wfd-combined-fields` in
+styles.html), the same technique the tag-filter chips already use; they
+default to the multiplier's value and the "bunch" unit respectively, but are
+independently editable. Submitting the dialog:
+
+1. **Decrements the chosen pantry's stock** for every one of the recipe's
+   ingredients by `quantity × multiplier`, **floored at zero** — it never
+   goes negative, and an ingredient with no pantry stock (or no quantity
+   specified on the recipe) is simply left untouched.
+2. **Records it as cooked** — upserts `past_cooked_recipes` for this recipe:
+   `times_cooked + 1` (starting at 1) and `last_cooked_at = now()`.
+3. **Optionally saves the ingredients as a combined ingredient** (see
+   [Combined ingredients tab](#combined-ingredients-tab-tabcombined)), named
+   after the recipe, with the recipe's ingredients (each multiplied by the
+   multiplier) as its component items and the dialog's own amount/unit
+   fields as its top-level quantity/unit. **If a combined ingredient with
+   that name already exists, it's added to rather than replaced** — its
+   quantity is summed with the submitted amount, its unit is filled in only
+   if it didn't already have one, and each matching component item's
+   quantity is summed (any new ingredient not already in it is appended) —
+   so cooking the same recipe repeatedly accumulates into one running bundle
+   instead of erroring on a name clash. See `mergeCombinedIngredientItems` in
+   `internal/store/combined_ingredients.go`.
+
+If any ingredient is completely missing from the chosen pantry (zero stock —
+the same check used to highlight ingredients above), nothing is written yet:
+the dialog reopens listing what's missing with a "Cook anyway" button. This
+is a plain redirect-and-redisplay round trip (the `cook_*` query params
+consumed by `RecipeDetailPage`), the same pattern every other form on this
+site uses for validation errors — no AJAX. Confirming resubmits with a
+hidden `confirmed=true` field, which skips the missing-ingredient check on
+the next attempt. All three writes happen in one transaction
+(`Store.CookRecipe`, `internal/store/cook.go`) — either everything above
+happens, or nothing does.
 
 ### Pantry page (`GET /pantry`)
 

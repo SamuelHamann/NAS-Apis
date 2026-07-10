@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 
 	"github.com/jackc/pgx/v5"
 
@@ -189,19 +190,8 @@ func (s *Store) CreateCombinedIngredientWithItems(ctx context.Context, in Combin
 	}
 	defer tx.Rollback(ctx)
 
-	rows, err := tx.Query(ctx, `
-		INSERT INTO combined_ingredients (name, quantity, unit_id, note)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, name, quantity, unit_id, note, created_at, updated_at`, in.Name, in.Quantity, in.UnitID, in.Note)
+	combined, err := createCombinedIngredientTx(ctx, tx, in)
 	if err != nil {
-		return models.CombinedIngredient{}, mapError(err)
-	}
-	combined, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[models.CombinedIngredient])
-	if err != nil {
-		return models.CombinedIngredient{}, mapError(err)
-	}
-
-	if err := setCombinedIngredientItems(ctx, tx, combined.ID, in.Items); err != nil {
 		return models.CombinedIngredient{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -219,6 +209,42 @@ func (s *Store) UpdateCombinedIngredientWithItems(ctx context.Context, id int64,
 	}
 	defer tx.Rollback(ctx)
 
+	combined, err := updateCombinedIngredientTx(ctx, tx, id, in)
+	if err != nil {
+		return models.CombinedIngredient{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return models.CombinedIngredient{}, mapError(err)
+	}
+	return combined, nil
+}
+
+// createCombinedIngredientTx is the transaction-scoped body of
+// CreateCombinedIngredientWithItems, factored out so CookRecipe (see
+// store/cook.go) can run it inside its own, larger transaction.
+func createCombinedIngredientTx(ctx context.Context, tx pgx.Tx, in CombinedIngredientInput) (models.CombinedIngredient, error) {
+	rows, err := tx.Query(ctx, `
+		INSERT INTO combined_ingredients (name, quantity, unit_id, note)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, name, quantity, unit_id, note, created_at, updated_at`, in.Name, in.Quantity, in.UnitID, in.Note)
+	if err != nil {
+		return models.CombinedIngredient{}, mapError(err)
+	}
+	combined, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[models.CombinedIngredient])
+	if err != nil {
+		return models.CombinedIngredient{}, mapError(err)
+	}
+
+	if err := setCombinedIngredientItems(ctx, tx, combined.ID, in.Items); err != nil {
+		return models.CombinedIngredient{}, err
+	}
+	return combined, nil
+}
+
+// updateCombinedIngredientTx is the transaction-scoped body of
+// UpdateCombinedIngredientWithItems, factored out so CookRecipe (see
+// store/cook.go) can run it inside its own, larger transaction.
+func updateCombinedIngredientTx(ctx context.Context, tx pgx.Tx, id int64, in CombinedIngredientInput) (models.CombinedIngredient, error) {
 	rows, err := tx.Query(ctx, `
 		UPDATE combined_ingredients
 		SET name = $2, quantity = $3, unit_id = $4, note = $5, updated_at = now()
@@ -235,10 +261,136 @@ func (s *Store) UpdateCombinedIngredientWithItems(ctx context.Context, id int64,
 	if err := setCombinedIngredientItems(ctx, tx, id, in.Items); err != nil {
 		return models.CombinedIngredient{}, err
 	}
-	if err := tx.Commit(ctx); err != nil {
+	return combined, nil
+}
+
+// getCombinedIngredientByNameTx looks up a combined ingredient by its exact
+// name (citext, so this is case-insensitive), or returns ErrNotFound.
+func getCombinedIngredientByNameTx(ctx context.Context, tx pgx.Tx, name string) (models.CombinedIngredient, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT id, name, quantity, unit_id, note, created_at, updated_at
+		FROM combined_ingredients WHERE name = $1`, name)
+	if err != nil {
+		return models.CombinedIngredient{}, mapError(err)
+	}
+	combined, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[models.CombinedIngredient])
+	if err != nil {
 		return models.CombinedIngredient{}, mapError(err)
 	}
 	return combined, nil
+}
+
+// listCombinedIngredientItemsTx returns every component-ingredient row of a
+// combined ingredient, unjoined (raw junction rows).
+func listCombinedIngredientItemsTx(ctx context.Context, tx pgx.Tx, combinedIngredientID int64) ([]models.CombinedIngredientItem, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT combined_ingredient_id, ingredient_id, quantity, unit_id, note
+		FROM combined_ingredient_items WHERE combined_ingredient_id = $1`, combinedIngredientID)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	items, err := pgx.CollectRows(rows, pgx.RowToStructByName[models.CombinedIngredientItem])
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return items, nil
+}
+
+// upsertCombinedIngredientFromRecipeTx creates, or adds to, a combined
+// ingredient named after a recipe: newItems (already multiplied by the
+// recipe multiplier) become its component items, and quantity/unitID (the
+// combined ingredient's own top-level amount, entered separately in the cook
+// dialog) are applied to its own fields. If a combined ingredient with this
+// name doesn't exist yet it's created fresh with quantity/unitID as given;
+// if it does, quantity is added to its existing quantity, unitID only fills
+// in a still-unset unit, and its component items are added to (see
+// mergeCombinedIngredientItems) rather than overwritten — so repeatedly
+// cooking the same recipe accumulates leftovers into one bundle instead of
+// erroring on the name conflict. Called from CookRecipe's transaction (see
+// store/cook.go).
+func upsertCombinedIngredientFromRecipeTx(ctx context.Context, tx pgx.Tx, name string, quantity float64, unitID *int64, newItems []CombinedIngredientItemInput) error {
+	existing, err := getCombinedIngredientByNameTx(ctx, tx, name)
+	if errors.Is(err, ErrNotFound) {
+		_, err := createCombinedIngredientTx(ctx, tx, CombinedIngredientInput{
+			Name:     name,
+			Quantity: quantity,
+			UnitID:   unitID,
+			Items:    newItems,
+		})
+		return err
+	}
+	if err != nil {
+		return err
+	}
+
+	existingItems, err := listCombinedIngredientItemsTx(ctx, tx, existing.ID)
+	if err != nil {
+		return err
+	}
+
+	mergedUnitID := existing.UnitID
+	if mergedUnitID == nil {
+		mergedUnitID = unitID
+	}
+
+	_, err = updateCombinedIngredientTx(ctx, tx, existing.ID, CombinedIngredientInput{
+		Name:     existing.Name,
+		Quantity: existing.Quantity + quantity,
+		UnitID:   mergedUnitID,
+		Note:     existing.Note,
+		Items:    mergeCombinedIngredientItems(existingItems, newItems),
+	})
+	return err
+}
+
+// mergeCombinedIngredientItems folds newItems into existing: a row whose
+// IngredientID matches an existing one has its quantity summed (nil plus a
+// present quantity just takes the present one) and its unit/note filled in
+// from the new row only where the existing row didn't already have one;
+// every other new row is appended as-is. Existing rows keep their original
+// order, with genuinely new ingredients appended after.
+func mergeCombinedIngredientItems(existing []models.CombinedIngredientItem, newItems []CombinedIngredientItemInput) []CombinedIngredientItemInput {
+	byIngredient := make(map[int64]CombinedIngredientItemInput, len(existing)+len(newItems))
+	order := make([]int64, 0, len(existing)+len(newItems))
+
+	for _, item := range existing {
+		byIngredient[item.IngredientID] = CombinedIngredientItemInput{
+			IngredientID: item.IngredientID,
+			Quantity:     item.Quantity,
+			UnitID:       item.UnitID,
+			Note:         item.Note,
+		}
+		order = append(order, item.IngredientID)
+	}
+
+	for _, add := range newItems {
+		cur, ok := byIngredient[add.IngredientID]
+		if !ok {
+			byIngredient[add.IngredientID] = add
+			order = append(order, add.IngredientID)
+			continue
+		}
+		switch {
+		case cur.Quantity != nil && add.Quantity != nil:
+			sum := *cur.Quantity + *add.Quantity
+			cur.Quantity = &sum
+		case add.Quantity != nil:
+			cur.Quantity = add.Quantity
+		}
+		if cur.UnitID == nil {
+			cur.UnitID = add.UnitID
+		}
+		if cur.Note == nil {
+			cur.Note = add.Note
+		}
+		byIngredient[add.IngredientID] = cur
+	}
+
+	merged := make([]CombinedIngredientItemInput, 0, len(order))
+	for _, id := range order {
+		merged = append(merged, byIngredient[id])
+	}
+	return merged
 }
 
 // setCombinedIngredientItems replaces every combined_ingredient_items row

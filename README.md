@@ -33,6 +33,7 @@ available while that migration is in progress.
 | POST      | `/pantry/{id}/delete`             | Delete a pantry item (HTML form)     |
 | GET       | `/recipes`                        | Recipes page (HTML): grouped/coloured by pantry-relative readiness, with sort + tag filter |
 | GET       | `/recipes/{id}`                   | Recipe detail page (HTML): ingredients (missing ones highlighted) + instructions |
+| POST      | `/recipes/{id}/cook`              | Cook a recipe: decrement pantry stock, log it as cooked, optionally save leftovers as a combined ingredient (HTML form) |
 | CRUD      | `/recipes`, `/recipes/{id}`       | Recipes (bigint id)                    |
 | GET       | `/recipes/cookable`               | Recipes cookable from pantry stock   |
 | GET       | `/ingredients`                    | Ingredients page (HTML): Ingredients tab + Combined ingredients tab (`?tab=combined`), switched client-side |
