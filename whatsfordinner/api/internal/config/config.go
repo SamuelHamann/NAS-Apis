@@ -30,6 +30,11 @@ type Config struct {
 	DBSSLMode     string        // WFD_DB_SSLMODE   (default: "disable")
 	DBMaxConns    int32         // WFD_DB_MAX_CONNS (default: 10)
 	DBConnTimeout time.Duration // WFD_DB_CONN_TIMEOUT (default: 10s)
+
+	// Gemini (receipt scanning). GeminiAPIKey has no default — the "Scan
+	// receipt" feature simply fails per-request until one is set.
+	GeminiAPIKey string // WFD_GEMINI_API_KEY (default: "")
+	GeminiModel  string // WFD_GEMINI_MODEL   (default: "gemini-3.1-flash-lite")
 }
 
 // Load reads configuration from environment variables, applying sensible
@@ -51,6 +56,9 @@ func Load() Config {
 		DBSSLMode:     getEnv("WFD_DB_SSLMODE", "disable"),
 		DBMaxConns:    int32(getEnvInt("WFD_DB_MAX_CONNS", 10)),
 		DBConnTimeout: getEnvDuration("WFD_DB_CONN_TIMEOUT", 10*time.Second),
+
+		GeminiAPIKey: getEnv("WFD_GEMINI_API_KEY", ""),
+		GeminiModel:  getEnv("WFD_GEMINI_MODEL", "gemini-3.1-flash-lite"),
 	}
 }
 

@@ -106,6 +106,13 @@ discrete `WFD_DB_*` settings.
 
 Durations use Go's format (e.g. `500ms`, `5s`, `2m`).
 
+### Gemini (receipt scanning)
+
+| Variable             | Default                  | Description                                                    |
+| -------------------- | ------------------------ | ---------------------------------------------------------------- |
+| `WFD_GEMINI_API_KEY`  | `""`                     | Gemini API key ([aistudio.google.com/apikey](https://aistudio.google.com/apikey)). Empty means `/scan-receipt` renders normally but every scan fails with an error banner. |
+| `WFD_GEMINI_MODEL`    | `gemini-3.1-flash-lite`  | Model passed to the `generateContent` endpoint                   |
+
 ## Project structure
 
 ```
@@ -115,6 +122,7 @@ whatsfordinner/
 │   ├── internal/            # Private packages (cannot be imported externally)
 │   │   ├── config/          # Environment-based configuration + DSN building
 │   │   ├── database/        # pgx connection pool creation + ping
+│   │   ├── gemini/          # Minimal REST client for Gemini's generateContent (image + prompt -> text), used by /scan-receipt
 │   │   ├── models/          # Structs mapping to each DB table (json + db tags)
 │   │   ├── store/           # Data-access layer (CRUD), one file per resource
 │   │   │   ├── store.go     # Store type, sentinel errors, error mapping
@@ -150,7 +158,8 @@ whatsfordinner/
 │   │       ├── combined_ingredients_page.go # CRUD for the /ingredients page's "Combined ingredients" tab (no own GET route)
 │   │       ├── units.go
 │   │       ├── tags.go
-│   │       └── pantry.go
+│   │       ├── pantry.go
+│   │       └── scan_receipt.go  # GET/POST /scan-receipt handlers
 │   ├── templates/           # Go html/template pages + shared partials
 │   │   ├── styles.html      # {{define "styles"}} - design tokens + all CSS
 │   │   ├── icons.html       # {{define "icon-*"}} - shared inline SVG icons
@@ -165,6 +174,7 @@ whatsfordinner/
 │   │                        #   (+ ingredient_item/ingredient_form and
 │   │                        #   combined_ingredient_item/combined_ingredient_form/
 │   │                        #   combined_ingredient_item_row partials)
+│   │   └── scan_receipt.html # GET/POST /scan-receipt
 │   ├── Dockerfile           # 2-stage build: Go -> distroless
 │   ├── Makefile             # Common dev commands (run, build, test, ...)
 │   ├── go.mod
@@ -386,6 +396,8 @@ when no one is signed in.
 | POST   | `/combined-ingredients`             | Add a combined ingredient, including its component items (form) |
 | POST   | `/combined-ingredients/{id}/update` | Edit a combined ingredient and replace its component items (form) |
 | POST   | `/combined-ingredients/{id}/delete` | Delete a combined ingredient (its items cascade) (form)  |
+| GET    | `/scan-receipt`        | Scan receipt page: photo-upload form (mobile-only entry point on the home page) |
+| POST   | `/scan-receipt`        | Send the photo to Gemini and render what it read back directly (form; not a redirect — see below) |
 
 There's no password: the users table is just "who is using this household
 device right now". `/login` doubles as both the sign-in picker and the user
@@ -609,6 +621,52 @@ button. Validation (`parseCombinedIngredientForm` in
 - A row left entirely blank (ingredient/quantity/unit/note all empty) is
   silently skipped, so clicking "Add ingredient" without filling it in is a
   no-op rather than a validation error.
+
+### Scan receipt (`GET`/`POST /scan-receipt`)
+
+A "Scan receipt" tile on the home page (mobile-only — see `.wfd-mobile-only`
+in styles.html, hidden outside `(pointer: coarse) and (max-width: 600px)`)
+opens a form with `<input type="file" accept="image/*" capture="environment">`,
+which opens the phone's camera directly. Submitting it sends the photo to
+Gemini (`internal/gemini`, a small REST client for the `generateContent`
+endpoint — no SDK dependency), asking it to extract every item purchased
+(ignoring can/bottle deposit lines — "consigne"/"deposit"/"CRV", not a
+purchased item), plus the receipt's total and any taxes.
+
+**The response is structured JSON, not prose** — enforced via Gemini's
+`generationConfig.responseSchema` (`receiptSchema` in `scan_receipt.go`), not
+just prompt wording, so the shape below is guaranteed regardless of what's on
+the receipt:
+
+```json
+{
+  "items": [
+    { "name": "string", "quantity": number|null, "price": number|null, "code": "string|null" }
+  ],
+  "total": number|null,
+  "taxes": [
+    { "name": "string", "amount": number }
+  ]
+}
+```
+
+`quantity`/`price`/`code` are `null` when the receipt doesn't show them for
+that item; `code` is whatever product code/SKU is printed on the receipt
+itself, not matched against our own `ingredients` table (see
+`ReceiptScanResult`/`ReceiptItem`/`ReceiptTax` in `scan_receipt.go`, whose
+`json` tags mirror this schema exactly for decoding). The page parses this
+into a real item list plus a total/taxes summary line — nothing here is
+persisted to the database yet, this is still a first cut ahead of any real
+pantry integration.
+
+Unlike every other form in this app, `POST /scan-receipt` does not redirect
+on success: it renders `scan_receipt.html` directly from the POST handler.
+Nothing here is written to the database, so there's no state to reload from
+a redirect, and round-tripping a photo through a redirect URL isn't
+practical.
+
+Requires `WFD_GEMINI_API_KEY` (see [Configuration](#configuration)) — without
+one, the page still renders, but every scan fails with an error banner.
 
 ### Live search
 

@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"log/slog"
 
+	"github.com/SamuelHamann/NAS-Apis/whatsfordinner/internal/gemini"
 	"github.com/SamuelHamann/NAS-Apis/whatsfordinner/internal/store"
 )
 
@@ -13,9 +14,10 @@ type Handler struct {
 	store          *store.Store
 	logger         *slog.Logger
 	templatesCache map[string]*template.Template
+	gemini         *gemini.Client
 }
 
 // New creates a Handler.
-func New(store *store.Store, logger *slog.Logger, cache map[string]*template.Template) *Handler {
-	return &Handler{store: store, logger: logger, templatesCache: cache}
+func New(store *store.Store, logger *slog.Logger, cache map[string]*template.Template, geminiClient *gemini.Client) *Handler {
+	return &Handler{store: store, logger: logger, templatesCache: cache, gemini: geminiClient}
 }

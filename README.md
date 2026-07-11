@@ -43,6 +43,8 @@ available while that migration is in progress.
 | CRUD      | `/locations`, `/locations/{id}`   | Food storage locations (integer id)  |
 | CRUD      | `/tags`, `/tags/{id}`             | Recipe tags (integer id)             |
 | CRUD      | `/past-cooked`, `/past-cooked/{id}` | Cooking history (UUID id)          |
+| GET       | `/scan-receipt`                   | Scan receipt page (HTML, mobile-only entry point): photo-upload form |
+| POST      | `/scan-receipt`                   | Send the photo to Gemini (structured JSON output) and render the parsed item list + total/taxes (HTML form) |
 
 See [`whatsfordinner/README.md`](./whatsfordinner/README.md) for full details,
 request bodies and configuration. The UI (navbar, home page, sign-in) is

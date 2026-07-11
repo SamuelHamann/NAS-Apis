@@ -31,7 +31,7 @@ func parseTestTemplates(t *testing.T) map[string]*template.Template {
 }
 
 func TestHomeRendersSuccessfully(t *testing.T) {
-	h := New(nil, slog.New(slog.NewTextHandler(io.Discard, nil)), parseTestTemplates(t))
+	h := New(nil, slog.New(slog.NewTextHandler(io.Discard, nil)), parseTestTemplates(t), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()

@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/SamuelHamann/NAS-Apis/whatsfordinner/internal/config"
+	"github.com/SamuelHamann/NAS-Apis/whatsfordinner/internal/gemini"
 	apiHandlers "github.com/SamuelHamann/NAS-Apis/whatsfordinner/internal/handlers/templates"
 	"github.com/SamuelHamann/NAS-Apis/whatsfordinner/internal/store"
 )
@@ -55,7 +56,7 @@ func (s *Server) Routes() http.Handler {
 	}
 
 	mux := http.NewServeMux()
-	h := apiHandlers.New(s.store, s.logger, templateCache)
+	h := apiHandlers.New(s.store, s.logger, templateCache, gemini.New(s.cfg.GeminiAPIKey, s.cfg.GeminiModel))
 
 	// --- Public endpoints (no authentication) ---
 	mux.HandleFunc("GET /health", h.Health)
@@ -172,6 +173,14 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /combined-ingredients", h.CombinedIngredientsCreate)
 	mux.HandleFunc("POST /combined-ingredients/{id}/update", h.CombinedIngredientsUpdate)
 	mux.HandleFunc("POST /combined-ingredients/{id}/delete", h.CombinedIngredientsDelete)
+
+	// Scan receipt: snap a photo of a grocery receipt (mobile-only entry
+	// point — see the home page's "Scan receipt" tile) and have Gemini list
+	// what was bought. Nothing is persisted, so the result renders directly
+	// from the POST handler rather than via a redirect. See
+	// internal/gemini and scan_receipt.go.
+	mux.HandleFunc("GET /scan-receipt", h.ScanReceiptPage)
+	mux.HandleFunc("POST /scan-receipt", h.ScanReceiptSubmit)
 
 	return s.withMiddleware(mux)
 }
