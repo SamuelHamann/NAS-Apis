@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/SamuelHamann/NAS-Apis/whatsfordinner/internal/gemini"
 )
@@ -37,6 +38,10 @@ type ReceiptItem struct {
 	// Code is whatever product code/SKU is printed on the receipt itself —
 	// not matched against our own ingredients table.
 	Code *string `json:"code"`
+	// UPC is the full 12-digit UPC-A code derived from Code (see upcFromCode),
+	// nil if Code doesn't look like a bare UPC without its check digit. Not
+	// part of receiptSchema — computed after Gemini's response is decoded.
+	UPC *string `json:"-"`
 }
 
 // ReceiptTax is one named tax line (e.g. "GST", "QST") and its amount.
@@ -84,6 +89,45 @@ var receiptSchema = &gemini.Schema{
 // maxReceiptPhotoBytes caps the upload generously for a phone photo while
 // keeping the request small enough to send to Gemini inline (no Files API).
 const maxReceiptPhotoBytes = 10 << 20 // 10 MiB
+
+// upcDigits is how many digits a UPC-A code has before its trailing check
+// digit — receipts print the bare 11 digits (or fewer, missing leading
+// zeros) but never the check digit itself.
+const upcDigits = 11
+
+// upcFromCode derives a full 12-digit UPC-A code from a receipt's printed
+// product code: left-pads it with zeros to 11 digits, then appends the
+// computed check digit. Returns false if code isn't purely numeric or
+// already longer than 11 digits, since it then doesn't look like a bare UPC
+// missing its check digit.
+func upcFromCode(code string) (string, bool) {
+	if code == "" || len(code) > upcDigits {
+		return "", false
+	}
+	for _, r := range code {
+		if r < '0' || r > '9' {
+			return "", false
+		}
+	}
+	padded := strings.Repeat("0", upcDigits-len(code)) + code
+	return padded + string(rune('0'+upcCheckDigit(padded))), true
+}
+
+// upcCheckDigit computes the UPC-A check digit for an 11-digit numeric
+// string: digits at odd positions (1st, 3rd, ...) are weighted 3x, digits
+// at even positions are weighted 1x, and the check digit is whatever brings
+// that sum up to the next multiple of 10.
+func upcCheckDigit(elevenDigits string) int {
+	sum := 0
+	for i, r := range elevenDigits {
+		d := int(r - '0')
+		if i%2 == 0 {
+			d *= 3
+		}
+		sum += d
+	}
+	return (10 - sum%10) % 10
+}
 
 // receiptPrompt asks Gemini to read a photographed grocery receipt and
 // extract what was bought as JSON matching receiptSchema. Can/bottle deposit
@@ -161,6 +205,15 @@ func (h *Handler) ScanReceiptSubmit(w http.ResponseWriter, r *http.Request) {
 		data.Error = "got an unreadable response back, please try again"
 		h.renderScanReceiptPage(w, r, data)
 		return
+	}
+
+	for i, item := range result.Items {
+		if item.Code == nil {
+			continue
+		}
+		if upc, ok := upcFromCode(*item.Code); ok {
+			result.Items[i].UPC = &upc
+		}
 	}
 
 	data.Result = &result
