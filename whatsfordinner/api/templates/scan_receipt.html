@@ -40,7 +40,35 @@
     <section id="scan-panel" class="wfd-tabs__panel" data-tab-panel {{if eq .ActiveTab "queue"}}hidden{{end}}>
       <p class="wfd-page-subtitle">Take a photo of a receipt to see what was bought.</p>
 
+      {{if not .SelectedPantry}}
+        <p class="wfd-list-empty">Create a pantry in the database first (see the schema docs).</p>
+      {{else}}
+      {{/* Nesting-safe layout, same trick as the pantry page's picker: a
+           zero-content sibling GET form carries the pantry choice via
+           ?pantry_id= so switching it reloads without losing the Scan tab,
+           and a hidden field inside the actual POST form below carries the
+           current selection forward into the scan submission. */}}
+      <form id="scan-pantry-view" method="get" action="/scan-receipt" hidden>
+        <input type="hidden" name="tab" value="scan" />
+      </form>
+
+      {{if gt (len .Pantries) 1}}
+      <div class="wfd-toolbar__row">
+        <label class="wfd-toolbar__group-label" style="display:flex;align-items:center;gap:0.5rem;">
+          Pantry
+          <select name="pantry_id" form="scan-pantry-view" onchange="this.form.submit()">
+            {{range .Pantries}}
+              <option value="{{.ID}}" {{if eq $.SelectedPantry.ID .ID}}selected{{end}}>{{.Name}}</option>
+            {{end}}
+          </select>
+        </label>
+      </div>
+      {{else}}
+      <p class="wfd-toolbar__group-label">Pantry: {{.SelectedPantry.Name}}</p>
+      {{end}}
+
       <form method="post" action="/scan-receipt" enctype="multipart/form-data" class="wfd-pantry-form">
+        <input type="hidden" name="pantry_id" value="{{.SelectedPantry.ID}}" />
         <label class="wfd-pantry-form__wide">
           Receipt photo
           <input type="file" name="photo" accept="image/*" capture="environment" required />
@@ -52,6 +80,7 @@
           </button>
         </div>
       </form>
+      {{end}}
 
       {{if .Result}}
       <section class="wfd-recipe-section">
@@ -128,6 +157,7 @@
                 </div>
                 <div class="wfd-status-item__meta">
                   <span>Status <strong>{{.Status}}</strong></span>
+                  <span>Pantry <strong>{{.PantryName}}</strong></span>
                   {{if .Price}}<span>Price <strong>${{deref .Price}}</strong></span>{{end}}
                   {{if .UPC}}<span>UPC <strong>{{.UPC}}</strong></span>{{end}}
                 </div>

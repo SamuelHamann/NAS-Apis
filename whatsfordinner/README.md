@@ -113,6 +113,18 @@ Durations use Go's format (e.g. `500ms`, `5s`, `2m`).
 | `WFD_GEMINI_API_KEY`  | `""`                     | Gemini API key ([aistudio.google.com/apikey](https://aistudio.google.com/apikey)). Empty means `/scan-receipt` renders normally but every scan fails with an error banner. |
 | `WFD_GEMINI_MODEL`    | `gemini-3.1-flash-lite`  | Model passed to the `generateContent` endpoint                   |
 
+### Queue worker (`internal/worker`)
+
+No API key needed — OpenFoodFacts' live API is public/unauthenticated for
+reads. See [Queue worker](#queue-worker) below for what this background job
+does.
+
+| Variable                      | Default | Description                                              |
+| ------------------------------ | ------- | --------------------------------------------------------- |
+| `WFD_QUEUE_WORKER_INTERVAL`    | `1m30s` | How often the worker claims and processes a batch          |
+| `WFD_QUEUE_WORKER_BATCH_SIZE`  | `13`    | Max `pending_pantry_items` rows claimed per tick            |
+| `WFD_OPENFOODFACTS_LOCALE`     | `ca`    | Country subdomain queried (`https://<locale>.openfoodfacts.org`) — `world` for the global catalog |
+
 ## Project structure
 
 ```
@@ -134,7 +146,10 @@ whatsfordinner/
 │   │   │   ├── pantry.go
 │   │   │   ├── past_cooked.go
 │   │   │   ├── cook.go      # CookRecipe: the /recipes/{id}/cook transaction (pantry decrement + past_cooked upsert + optional combined-ingredient upsert)
+│   │   │   ├── pending_pantry_items.go # CRUD + claim/status-update for pending_pantry_items, used by /scan-receipt and internal/worker
 │   │   │   └── users.go
+│   │   ├── worker/          # Background jobs (not HTTP handlers)
+│   │   │   └── pending_pantry_items.go # Polls pending_pantry_items, resolves each by UPC against OpenFoodFacts
 │   │   ├── server/          # Router, route registration, middleware
 │   │   │   ├── server.go    # Routes() wires every endpoint to a handler
 │   │   │   └── middleware.go# Cross-cutting middleware (request logging, ...)
@@ -159,7 +174,8 @@ whatsfordinner/
 │   │       ├── units.go
 │   │       ├── tags.go
 │   │       ├── pantry.go
-│   │       └── scan_receipt.go  # GET/POST /scan-receipt handlers
+│   │       ├── scan_receipt.go  # GET/POST /scan-receipt handlers
+│   │       └── scan_receipt_queue_view.go # Pure status->tone/sort logic for the Queue tab
 │   ├── templates/           # Go html/template pages + shared partials
 │   │   ├── styles.html      # {{define "styles"}} - design tokens + all CSS
 │   │   ├── icons.html       # {{define "icon-*"}} - shared inline SVG icons
@@ -194,6 +210,11 @@ whatsfordinner/
 - **`internal/store`** — All SQL lives here. One file per resource exposes
   `List/Get/Create/Update/Delete`; driver errors are translated to the sentinel
   errors `ErrNotFound`, `ErrConflict` and `ErrReference`.
+- **`internal/worker`** — Background jobs that aren't triggered by an HTTP
+  request. Currently just `PendingPantryItemsWorker` (see
+  [Queue worker](#queue-worker)), started as a plain goroutine from
+  `cmd/server/main.go` — there's no separate process/deployment for it, since
+  this whole app is one binary on the NAS.
 - **`internal/server`** — Owns the `http.ServeMux` and middleware. **All routes are
   registered in `server.go` → `Routes()`.**
 - **`api/templates`** — Full-page `html/template` files (named after the page,
@@ -282,38 +303,6 @@ Structs live in `internal/models`. Nullable columns are pointers and serialize t
   `location_id` (optional FK → `food_locations`), `expiration_date`
   (optional; drives the color-coded grouping on the pantry page),
   `updated_at`.
-- **PendingPantryItem** (`pending_pantry_items`, UUID id) — `upc` (required,
-  possibly empty), `name` (required), `quantity` (required, ≥0), `unit_id`
-  (optional FK → `units`), `price` (optional, ≥0 if set), `status` (`pending`
-  / `processing` / `approved` / `rejected`, defaults to `pending`),
-  `created_at`, `updated_at`. One row per item read off a scanned receipt
-  (see [Scan receipt](#scan-receipt-getpost-scan-receipt)), queued for review
-  before it becomes a real `PantryIngredient` — the `/scan-receipt` page's
-  Queue tab lets you view and filter these rows by status, but there's no
-  approve/reject action yet, so `pending` rows just sit there. Items with no
-  code printed on the receipt (so no UPC could be derived) are still
-  inserted, with `upc = ''` and `status = 'rejected'` right away, since
-  there'd be no barcode to ever match them against.
-
-  **The `pending_pantry_items` table is not yet part of the schema
-  provisioned by
-  [NAS-Images/postgres](https://github.com/SamuelHamann/NAS-Images/tree/main/postgres)
-  — add it there before deploying this version:**
-
-  ```sql
-  CREATE TABLE IF NOT EXISTS pending_pantry_items (
-      id          uuid          PRIMARY KEY DEFAULT gen_random_uuid(),
-      upc         text          NOT NULL,
-      name        text          NOT NULL,
-      quantity    numeric(10,3) NOT NULL CHECK (quantity >= 0),
-      unit_id     bigint        REFERENCES units(id) ON DELETE RESTRICT,
-      price       numeric(10,2) CHECK (price IS NULL OR price >= 0),
-      status      text          NOT NULL DEFAULT 'pending'
-                                CHECK (status IN ('pending', 'processing', 'approved', 'rejected')),
-      created_at  timestamptz   NOT NULL DEFAULT now(),
-      updated_at  timestamptz   NOT NULL DEFAULT now()
-  );
-  ```
 - **Pantry** (`pantry`, bigint id) — `name` (required), `created_at`,
   `updated_at`. A container for pantry ingredients ("Main kitchen", "Garage
   freezer", ...). Users are linked to the pantries they can see through the
@@ -347,6 +336,48 @@ Structs live in `internal/models`. Nullable columns are pointers and serialize t
 
   -- Backfill / enforce NOT NULL once every row has a pantry.
   ALTER TABLE pantry_ingredients ALTER COLUMN pantry_id SET NOT NULL;
+  ```
+- **PendingPantryItem** (`pending_pantry_items`, UUID id) — `pantry_id`
+  (required, FK → `pantry` — which pantry the item becomes a
+  `PantryIngredient` of once approved), `upc` (required, possibly empty),
+  `name` (required), `quantity` (required, ≥0), `unit_id` (optional FK →
+  `units`), `price` (optional, ≥0 if set), `status` (`pending` /
+  `processing` / `approved` / `rejected`, defaults to `pending`),
+  `created_at`, `updated_at`. One row per item read off a scanned receipt
+  (see [Scan receipt](#scan-receipt-getpost-scan-receipt)), queued for review
+  before it becomes a real `PantryIngredient` — the `/scan-receipt` page's
+  Queue tab lets you view and filter these rows by status, but there's no
+  approve/reject action yet.
+
+  Items with no code printed on the receipt (so no UPC could be derived) are
+  inserted with `upc = ''` and `status = 'rejected'` right away, since
+  there'd be no barcode to ever match them against. Everything else starts
+  at `pending` and is picked up by a background worker
+  (`internal/worker`, see [Queue worker](#queue-worker) below) that resolves
+  it against OpenFoodFacts by UPC, landing on `approved` (found) or
+  `rejected` (lookup failed) — there's no retry, and no code path currently
+  moves an item to `processing` other than that worker claiming it.
+
+  **The `pending_pantry_items` table is not yet part of the schema
+  provisioned by
+  [NAS-Images/postgres](https://github.com/SamuelHamann/NAS-Images/tree/main/postgres)
+  — add it there before deploying this version (after the `pantry` table
+  above, since it's referenced by `pantry_id`):**
+
+  ```sql
+  CREATE TABLE IF NOT EXISTS pending_pantry_items (
+      id          uuid          PRIMARY KEY DEFAULT gen_random_uuid(),
+      pantry_id   bigint        NOT NULL REFERENCES pantry(id) ON DELETE CASCADE,
+      upc         text          NOT NULL,
+      name        text          NOT NULL,
+      quantity    numeric(10,3) NOT NULL CHECK (quantity >= 0),
+      unit_id     bigint        REFERENCES units(id) ON DELETE RESTRICT,
+      price       numeric(10,2) CHECK (price IS NULL OR price >= 0),
+      status      text          NOT NULL DEFAULT 'pending'
+                                CHECK (status IN ('pending', 'processing', 'approved', 'rejected')),
+      created_at  timestamptz   NOT NULL DEFAULT now(),
+      updated_at  timestamptz   NOT NULL DEFAULT now()
+  );
   ```
 - **User** (`users`, bigint id) — `username` (required), `created_at`, `updated_at`.
   There is no password: picking a user at `/login` (stored in a cookie) is the
@@ -699,12 +730,20 @@ positions weighted 3x, even positions 1x, rounding up to the next multiple of
 10) and appended. Non-numeric codes, or codes already longer than 11 digits,
 are left alone (no UPC shown for that item).
 
-The handler inserts a `pending_pantry_items` row for every item — `unit` is
-matched case-insensitively against `units.name`, creating a new unit row if
-none matches. An item with a derived UPC gets `status = 'pending'`; one with
-no `code` (so no UPC could be derived) is inserted with `upc = ''` and
-`status = 'rejected'` right away, since there's no barcode to ever match it
-against. See the **PendingPantryItem** entry above for the table shape.
+The Scan tab has its own pantry picker — same picker as the
+[Pantry page](#pantry-page-get-pantry) (`listVisiblePantries`/
+`pickSelectedPantry` in `pantry_page.go`, reused as-is from `scan_receipt.go`),
+defaulting to the first pantry visible to the current request. Its choice is
+carried into the photo-upload form as a hidden `pantry_id` field, and the
+handler inserts a `pending_pantry_items` row for every item against that
+pantry — `unit` is matched case-insensitively against `units.name`, creating
+a new unit row if none matches. An item with a derived UPC gets
+`status = 'pending'`; one with no `code` (so no UPC could be derived) is
+inserted with `upc = ''` and `status = 'rejected'` right away, since there's
+no barcode to ever match it against. If there are no pantries at all yet,
+the form is replaced with a "create a pantry first" message instead — there's
+nowhere to attach a scanned item to. See the **PendingPantryItem** entry
+above for the table shape.
 
 Unlike every other form in this app, `POST /scan-receipt` does not redirect
 on success: it renders `scan_receipt.html` directly from the POST handler —
@@ -729,8 +768,9 @@ It lists every `pending_pantry_items` row (`loadQueueTab` in
 hidden-form technique as the pantry/ingredients pages' tag filters. By
 default (a fresh page load, no filter submitted yet) `pending`, `processing`
 and `rejected` are checked and `approved` isn't, since an approved item has
-already become a real pantry ingredient and doesn't need to keep cluttering
-the queue. Unchecking every box and submitting is honored as "show nothing"
+already been confirmed against OpenFoodFacts (see [Queue worker](#queue-worker)
+below) and doesn't need to keep cluttering the queue. Unchecking every box
+and submitting is honored as "show nothing"
 rather than falling back to the default set — a hidden `status_filter=1`
 field on the filter form is what tells the handler a filter was actually
 submitted, as opposed to just a plain link/reload landing on the tab.
@@ -741,6 +781,55 @@ Each row is tinted by its status to make the queue scannable at a glance:
 `.wfd-status-item--danger`/`--info`/`--success` in `styles.html`, and
 `queueItemTone`/`BuildQueueItems` in `scan_receipt_queue_view.go`). There is
 still no approve/reject action — this tab is read-only for now.
+
+### Queue worker
+
+`internal/worker`'s `PendingPantryItemsWorker` is a background job, not an
+HTTP endpoint: `cmd/server/main.go` starts it in its own goroutine
+(`go worker.New(...).Run(workerCtx)`) alongside the HTTP server, and cancels
+it via `workerCtx` on the same graceful shutdown the server uses.
+
+On every tick (`WFD_QUEUE_WORKER_INTERVAL`, default `1m30s`) it:
+
+1. Atomically claims up to `WFD_QUEUE_WORKER_BATCH_SIZE` (default `13`)
+   `pending_pantry_items` rows in `status = 'pending'`, oldest
+   (`created_at`) first, flipping them to `status = 'processing'` in the same
+   query (`ClaimPendingPantryItemsForProcessing` in
+   `internal/store/pending_pantry_items.go` — `UPDATE ... WHERE id IN
+   (SELECT ... FOR UPDATE SKIP LOCKED)`, the standard Postgres job-queue
+   pattern, so it stays correct even if more than one worker instance ever
+   runs).
+2. Looks up each claimed item's `upc` against OpenFoodFacts' **live**
+   product API directly — `GET
+   https://<WFD_OPENFOODFACTS_LOCALE>.openfoodfacts.org/api/v3.6/product/<upc>.json`
+   with a custom `User-Agent` header (required by OpenFoodFacts' usage
+   policy) and no auth (the live API is open for reads; only the
+   staging/sandbox host needs Basic Auth) — one request per item,
+   sequentially (never batched/parallel — see the rate-limit note below).
+
+   This is a raw `net/http` call (`productFound` in
+   `internal/worker/pending_pantry_items.go`), not a client library. An
+   earlier version used
+   [`github.com/openfoodfacts/openfoodfacts-go`](https://github.com/openfoodfacts/openfoodfacts-go),
+   but its `Product` struct declares some fields (e.g. `max_imgid`) as a
+   fixed JSON type when OpenFoodFacts actually returns different types for
+   that field across products — a real, existing product would fail to
+   decode and get misreported as "not found". `productFound` sidesteps this
+   entirely by decoding only the couple of top-level fields it actually
+   needs (HTTP status + whether a non-null `"product"` object came back),
+   never touching the large, inconsistently-typed product schema.
+3. Sets the item's status to `approved` if a product was found, or
+   `rejected` on a 404 or any other error — **no retries**. A transient
+   OpenFoodFacts error permanently rejects that item; the next scan (or a
+   manual `UPDATE ... SET status = 'pending'`) is what would give it another
+   chance.
+
+The default batch size/interval (13 items every 90s, ~8.7 requests/minute)
+are deliberately well under OpenFoodFacts' 15 requests/minute limit — one
+request per item and no retries means the worker's actual request rate never
+exceeds `WFD_QUEUE_WORKER_BATCH_SIZE` per `WFD_QUEUE_WORKER_INTERVAL`, so
+tightening either setting is a straightforward way to trade throughput
+against that margin.
 
 ### Live search
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/SamuelHamann/NAS-Apis/whatsfordinner/internal/gemini"
+	"github.com/SamuelHamann/NAS-Apis/whatsfordinner/internal/models"
 	"github.com/SamuelHamann/NAS-Apis/whatsfordinner/internal/store"
 )
 
@@ -18,6 +19,14 @@ type ScanReceiptPageData struct {
 	// until a photo has been submitted.
 	Result *ReceiptScanResult
 	Error  string
+
+	// Pantries backs the Scan tab's pantry picker — every pantry the current
+	// request is allowed to see (see listVisiblePantries).
+	Pantries []models.Pantry
+	// SelectedPantry is which pantry a scan's items get queued against (its
+	// ID is submitted as pending_pantry_items.pantry_id). Nil only when
+	// there are no pantries at all yet.
+	SelectedPantry *models.Pantry
 
 	// ActiveTab is "scan" (default) or "queue" — which panel the tab
 	// switcher shows first on page load (before any client-side JS takes
@@ -119,18 +128,6 @@ const defaultReceiptUnit = "unit"
 // with no quantity shown is a single unit of that item.
 const defaultReceiptQuantity float64 = 1
 
-// pending_pantry_items.status values. An item with a derivable UPC waits for
-// review ("pending"); one without is rejected immediately since there's no
-// barcode to ever match it against. "processing"/"approved" are set by a
-// review flow that doesn't exist yet — scanned items never reach them on
-// their own.
-const (
-	pendingPantryStatusPending    = "pending"
-	pendingPantryStatusProcessing = "processing"
-	pendingPantryStatusApproved   = "approved"
-	pendingPantryStatusRejected   = "rejected"
-)
-
 // upcDigits is how many digits a UPC-A code has before its trailing check
 // digit — receipts print the bare 11 digits (or fewer, missing leading
 // zeros) but never the check digit itself.
@@ -190,9 +187,31 @@ const receiptPrompt = `This image is a photo of a grocery store receipt. ` +
 
 // ScanReceiptPage renders GET /scan-receipt: the "take a photo" form.
 func (h *Handler) ScanReceiptPage(w http.ResponseWriter, r *http.Request) {
-	h.renderScanReceiptPage(w, r, ScanReceiptPageData{
-		PageData: h.newPageData(r, "Scan receipt", ""),
-	})
+	data := ScanReceiptPageData{PageData: h.newPageData(r, "Scan receipt", "")}
+
+	if err := h.loadPantryPicker(r, &data); err != nil {
+		h.logger.Error("list pantries", "error", err)
+		http.Error(w, "failed to load pantries", http.StatusInternalServerError)
+		return
+	}
+
+	h.renderScanReceiptPage(w, r, data)
+}
+
+// loadPantryPicker resolves which pantry a scan's items should be attached
+// to and populates data.Pantries/data.SelectedPantry — same picker used by
+// the pantry/recipes pages (listVisiblePantries + pickSelectedPantry), keyed
+// off r.FormValue("pantry_id") which transparently reads either a GET's
+// query string or a POST's multipart form field. SelectedPantry is nil only
+// when there are no pantries at all yet.
+func (h *Handler) loadPantryPicker(r *http.Request, data *ScanReceiptPageData) error {
+	pantries, err := h.listVisiblePantries(r)
+	if err != nil {
+		return err
+	}
+	data.Pantries = pantries
+	data.SelectedPantry = pickSelectedPantry(pantries, r.FormValue("pantry_id"))
+	return nil
 }
 
 // ScanReceiptSubmit handles POST /scan-receipt: reads the uploaded photo,
@@ -209,6 +228,17 @@ func (h *Handler) ScanReceiptSubmit(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxReceiptPhotoBytes)
 	if err := r.ParseMultipartForm(maxReceiptPhotoBytes); err != nil {
 		data.Error = "photo is too large or the form was invalid"
+		h.renderScanReceiptPage(w, r, data)
+		return
+	}
+
+	if err := h.loadPantryPicker(r, &data); err != nil {
+		h.logger.Error("list pantries", "error", err)
+		http.Error(w, "failed to load pantries", http.StatusInternalServerError)
+		return
+	}
+	if data.SelectedPantry == nil {
+		data.Error = "create a pantry first (see the schema docs)"
 		h.renderScanReceiptPage(w, r, data)
 		return
 	}
@@ -269,16 +299,17 @@ func (h *Handler) ScanReceiptSubmit(w http.ResponseWriter, r *http.Request) {
 	// match it against.
 	for _, item := range result.Items {
 		upc := ""
-		status := pendingPantryStatusRejected
+		status := store.PendingPantryStatusRejected
 		if item.UPC != nil {
 			upc = *item.UPC
-			status = pendingPantryStatusPending
+			status = store.PendingPantryStatusPending
 		}
 		quantity := defaultReceiptQuantity
 		if item.Quantity != nil {
 			quantity = *item.Quantity
 		}
 		if _, err := h.store.CreatePendingPantryItem(r.Context(), store.PendingPantryItemInput{
+			PantryID: data.SelectedPantry.ID,
 			UPC:      upc,
 			Name:     item.Name,
 			Quantity: quantity,

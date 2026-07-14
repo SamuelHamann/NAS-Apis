@@ -35,6 +35,18 @@ type Config struct {
 	// receipt" feature simply fails per-request until one is set.
 	GeminiAPIKey string // WFD_GEMINI_API_KEY (default: "")
 	GeminiModel  string // WFD_GEMINI_MODEL   (default: "gemini-3.1-flash-lite")
+
+	// Pending pantry item queue worker (internal/worker): claims a batch of
+	// pending_pantry_items and resolves each by UPC against OpenFoodFacts.
+	// Defaults (13 items every 1m30s, ~8.7/min) stay comfortably under
+	// OpenFoodFacts' 15 requests/minute limit, with one request per item and
+	// no retries.
+	QueueWorkerInterval  time.Duration // WFD_QUEUE_WORKER_INTERVAL   (default: 1m30s)
+	QueueWorkerBatchSize int           // WFD_QUEUE_WORKER_BATCH_SIZE (default: 13)
+	// OpenFoodFactsLocale is the country subdomain queried for each product
+	// lookup (https://<locale>.openfoodfacts.org) — "world" for the global
+	// catalog, or a country code (e.g. "ca") to prioritize that country's data.
+	OpenFoodFactsLocale string // WFD_OPENFOODFACTS_LOCALE (default: "ca")
 }
 
 // Load reads configuration from environment variables, applying sensible
@@ -59,6 +71,10 @@ func Load() Config {
 
 		GeminiAPIKey: getEnv("WFD_GEMINI_API_KEY", ""),
 		GeminiModel:  getEnv("WFD_GEMINI_MODEL", "gemini-3.1-flash-lite"),
+
+		QueueWorkerInterval:  getEnvDuration("WFD_QUEUE_WORKER_INTERVAL", 90*time.Second),
+		QueueWorkerBatchSize: getEnvInt("WFD_QUEUE_WORKER_BATCH_SIZE", 13),
+		OpenFoodFactsLocale:  getEnv("WFD_OPENFOODFACTS_LOCALE", "ca"),
 	}
 }
 

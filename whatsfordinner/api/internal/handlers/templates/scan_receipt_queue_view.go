@@ -11,10 +11,10 @@ type QueueStatusOption struct {
 // queueStatusOptions lists every pending_pantry_items.status value, in the
 // order its checkbox is shown.
 var queueStatusOptions = []QueueStatusOption{
-	{pendingPantryStatusPending, "Pending"},
-	{pendingPantryStatusProcessing, "Processing"},
-	{pendingPantryStatusApproved, "Approved"},
-	{pendingPantryStatusRejected, "Rejected"},
+	{store.PendingPantryStatusPending, "Pending"},
+	{store.PendingPantryStatusProcessing, "Processing"},
+	{store.PendingPantryStatusApproved, "Approved"},
+	{store.PendingPantryStatusRejected, "Rejected"},
 }
 
 // defaultQueueStatuses is what the Queue tab's checkboxes start checked with
@@ -22,9 +22,9 @@ var queueStatusOptions = []QueueStatusOption{
 // except "approved", since an approved item has already become a real
 // pantry ingredient and doesn't need to keep showing up here.
 var defaultQueueStatuses = []string{
-	pendingPantryStatusPending,
-	pendingPantryStatusProcessing,
-	pendingPantryStatusRejected,
+	store.PendingPantryStatusPending,
+	store.PendingPantryStatusProcessing,
+	store.PendingPantryStatusRejected,
 }
 
 // QueueItemView is one row on the Queue tab: a pending_pantry_items row plus
@@ -40,11 +40,11 @@ type QueueItemView struct {
 // (green) for approved, and "" (the card's regular color) for pending.
 func queueItemTone(status string) string {
 	switch status {
-	case pendingPantryStatusRejected:
+	case store.PendingPantryStatusRejected:
 		return "danger"
-	case pendingPantryStatusProcessing:
+	case store.PendingPantryStatusProcessing:
 		return "info"
-	case pendingPantryStatusApproved:
+	case store.PendingPantryStatusApproved:
 		return "success"
 	default:
 		return ""
@@ -62,7 +62,7 @@ func BuildQueueItems(rows []store.PendingPantryItemRow) []QueueItemView {
 	rejected := make([]QueueItemView, 0, len(views))
 	rest := make([]QueueItemView, 0, len(views))
 	for _, v := range views {
-		if v.Status == pendingPantryStatusRejected {
+		if v.Status == store.PendingPantryStatusRejected {
 			rejected = append(rejected, v)
 		} else {
 			rest = append(rest, v)

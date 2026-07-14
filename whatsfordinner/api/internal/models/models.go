@@ -137,6 +137,7 @@ type PastCookedRecipe struct {
 // "approved" or "rejected".
 type PendingPantryItem struct {
 	ID        uuid.UUID `json:"id" db:"id"`
+	PantryID  int64     `json:"pantry_id" db:"pantry_id"`
 	UPC       string    `json:"upc" db:"upc"`
 	Name      string    `json:"name" db:"name"`
 	Quantity  float64   `json:"quantity" db:"quantity"`

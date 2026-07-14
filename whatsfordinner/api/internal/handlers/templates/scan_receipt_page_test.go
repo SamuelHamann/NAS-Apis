@@ -4,7 +4,14 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/SamuelHamann/NAS-Apis/whatsfordinner/internal/models"
 )
+
+// testPantry is a stand-in SelectedPantry for scan_receipt.html tests: the
+// Scan tab's photo-upload form only renders once a pantry is selected (see
+// loadPantryPicker in scan_receipt.go), since every queued item needs one.
+var testPantry = &models.Pantry{ID: 1, Name: "Main kitchen"}
 
 func TestScanReceiptTemplateRendersForm(t *testing.T) {
 	ts, ok := parseTestTemplates(t)["scan_receipt.html"]
@@ -12,7 +19,11 @@ func TestScanReceiptTemplateRendersForm(t *testing.T) {
 		t.Fatal("scan_receipt.html not found in template cache")
 	}
 
-	data := ScanReceiptPageData{PageData: PageData{Title: "Scan receipt"}}
+	data := ScanReceiptPageData{
+		PageData:       PageData{Title: "Scan receipt"},
+		Pantries:       []models.Pantry{*testPantry},
+		SelectedPantry: testPantry,
+	}
 
 	var buf bytes.Buffer
 	if err := ts.Execute(&buf, data); err != nil {
@@ -26,6 +37,7 @@ func TestScanReceiptTemplateRendersForm(t *testing.T) {
 		`enctype="multipart/form-data"`,
 		`name="photo"`,
 		`capture="environment"`,
+		`name="pantry_id" value="1"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("expected %q in rendered body", want)
@@ -36,6 +48,28 @@ func TestScanReceiptTemplateRendersForm(t *testing.T) {
 	}
 }
 
+func TestScanReceiptTemplateRendersNoPantryState(t *testing.T) {
+	ts, ok := parseTestTemplates(t)["scan_receipt.html"]
+	if !ok {
+		t.Fatal("scan_receipt.html not found in template cache")
+	}
+
+	data := ScanReceiptPageData{PageData: PageData{Title: "Scan receipt"}}
+
+	var buf bytes.Buffer
+	if err := ts.Execute(&buf, data); err != nil {
+		t.Fatalf("execute scan_receipt.html: %v", err)
+	}
+	body := buf.String()
+
+	if !strings.Contains(body, "Create a pantry in the database first") {
+		t.Error("expected the no-pantry empty state to render")
+	}
+	if strings.Contains(body, `name="photo"`) {
+		t.Error("expected no photo-upload form with no pantry to attach items to")
+	}
+}
+
 func TestScanReceiptTemplateRendersResult(t *testing.T) {
 	ts, ok := parseTestTemplates(t)["scan_receipt.html"]
 	if !ok {
@@ -43,7 +77,9 @@ func TestScanReceiptTemplateRendersResult(t *testing.T) {
 	}
 
 	data := ScanReceiptPageData{
-		PageData: PageData{Title: "Scan receipt"},
+		PageData:       PageData{Title: "Scan receipt"},
+		Pantries:       []models.Pantry{*testPantry},
+		SelectedPantry: testPantry,
 		Result: &ReceiptScanResult{
 			Items: []ReceiptItem{
 				{Name: "Milk", Quantity: floatPtr(1), Price: floatPtr(3.50), Code: strPtr("12345")},
@@ -79,8 +115,10 @@ func TestScanReceiptTemplateRendersEmptyItems(t *testing.T) {
 	}
 
 	data := ScanReceiptPageData{
-		PageData: PageData{Title: "Scan receipt"},
-		Result:   &ReceiptScanResult{},
+		PageData:       PageData{Title: "Scan receipt"},
+		Pantries:       []models.Pantry{*testPantry},
+		SelectedPantry: testPantry,
+		Result:         &ReceiptScanResult{},
 	}
 
 	var buf bytes.Buffer

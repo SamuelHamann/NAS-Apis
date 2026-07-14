@@ -18,6 +18,7 @@ import (
 	"github.com/SamuelHamann/NAS-Apis/whatsfordinner/internal/database"
 	"github.com/SamuelHamann/NAS-Apis/whatsfordinner/internal/server"
 	"github.com/SamuelHamann/NAS-Apis/whatsfordinner/internal/store"
+	"github.com/SamuelHamann/NAS-Apis/whatsfordinner/internal/worker"
 )
 
 func main() {
@@ -47,6 +48,12 @@ func run() error {
 
 	st := store.New(pool)
 	srv := server.New(cfg, logger, st)
+
+	// Background job resolving scanned receipt items against OpenFoodFacts
+	// (see internal/worker). Stopped via workerCancel on shutdown, below.
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	defer workerCancel()
+	go worker.New(st, logger, cfg.QueueWorkerInterval, cfg.QueueWorkerBatchSize, cfg.OpenFoodFactsLocale).Run(workerCtx)
 
 	httpServer := &http.Server{
 		Addr:         cfg.Addr(),
