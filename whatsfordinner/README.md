@@ -282,6 +282,38 @@ Structs live in `internal/models`. Nullable columns are pointers and serialize t
   `location_id` (optional FK → `food_locations`), `expiration_date`
   (optional; drives the color-coded grouping on the pantry page),
   `updated_at`.
+- **PendingPantryItem** (`pending_pantry_items`, UUID id) — `upc` (required,
+  possibly empty), `name` (required), `quantity` (required, ≥0), `unit_id`
+  (optional FK → `units`), `price` (optional, ≥0 if set), `status` (`pending`
+  / `processing` / `approved` / `rejected`, defaults to `pending`),
+  `created_at`, `updated_at`. One row per item read off a scanned receipt
+  (see [Scan receipt](#scan-receipt-getpost-scan-receipt)), queued for review
+  before it becomes a real `PantryIngredient` — the `/scan-receipt` page's
+  Queue tab lets you view and filter these rows by status, but there's no
+  approve/reject action yet, so `pending` rows just sit there. Items with no
+  code printed on the receipt (so no UPC could be derived) are still
+  inserted, with `upc = ''` and `status = 'rejected'` right away, since
+  there'd be no barcode to ever match them against.
+
+  **The `pending_pantry_items` table is not yet part of the schema
+  provisioned by
+  [NAS-Images/postgres](https://github.com/SamuelHamann/NAS-Images/tree/main/postgres)
+  — add it there before deploying this version:**
+
+  ```sql
+  CREATE TABLE IF NOT EXISTS pending_pantry_items (
+      id          uuid          PRIMARY KEY DEFAULT gen_random_uuid(),
+      upc         text          NOT NULL,
+      name        text          NOT NULL,
+      quantity    numeric(10,3) NOT NULL CHECK (quantity >= 0),
+      unit_id     bigint        REFERENCES units(id) ON DELETE RESTRICT,
+      price       numeric(10,2) CHECK (price IS NULL OR price >= 0),
+      status      text          NOT NULL DEFAULT 'pending'
+                                CHECK (status IN ('pending', 'processing', 'approved', 'rejected')),
+      created_at  timestamptz   NOT NULL DEFAULT now(),
+      updated_at  timestamptz   NOT NULL DEFAULT now()
+  );
+  ```
 - **Pantry** (`pantry`, bigint id) — `name` (required), `created_at`,
   `updated_at`. A container for pantry ingredients ("Main kitchen", "Garage
   freezer", ...). Users are linked to the pantries they can see through the
@@ -641,7 +673,7 @@ the receipt:
 ```json
 {
   "items": [
-    { "name": "string", "quantity": number|null, "price": number|null, "code": "string|null" }
+    { "name": "string", "quantity": number|null, "unit": "string|null", "price": number|null, "code": "string|null" }
   ],
   "total": number|null,
   "taxes": [
@@ -650,23 +682,65 @@ the receipt:
 }
 ```
 
-`quantity`/`price`/`code` are `null` when the receipt doesn't show them for
-that item; `code` is whatever product code/SKU is printed on the receipt
+`quantity`/`unit`/`price`/`code` are `null` when the receipt doesn't show them
+for that item; `code` is whatever product code/SKU is printed on the receipt
 itself, not matched against our own `ingredients` table (see
 `ReceiptScanResult`/`ReceiptItem`/`ReceiptTax` in `scan_receipt.go`, whose
-`json` tags mirror this schema exactly for decoding). The page parses this
-into a real item list plus a total/taxes summary line — nothing here is
-persisted to the database yet, this is still a first cut ahead of any real
-pantry integration.
+`json` tags mirror this schema exactly for decoding). A missing `unit`
+defaults to `"unit"` (an individually-counted item) once decoded; a missing
+`quantity` defaults to `1`. The page parses this into a real item list plus a
+total/taxes summary line.
+
+For each item that has a `code`, the handler also derives a full 12-digit
+UPC-A code from it (`upcFromCode`/`upcCheckDigit` in `scan_receipt.go`):
+`code` is left-padded with zeros to 11 digits (receipts print the bare
+digits, missing any leading zeros), then a check digit is computed (odd
+positions weighted 3x, even positions 1x, rounding up to the next multiple of
+10) and appended. Non-numeric codes, or codes already longer than 11 digits,
+are left alone (no UPC shown for that item).
+
+The handler inserts a `pending_pantry_items` row for every item — `unit` is
+matched case-insensitively against `units.name`, creating a new unit row if
+none matches. An item with a derived UPC gets `status = 'pending'`; one with
+no `code` (so no UPC could be derived) is inserted with `upc = ''` and
+`status = 'rejected'` right away, since there's no barcode to ever match it
+against. See the **PendingPantryItem** entry above for the table shape.
 
 Unlike every other form in this app, `POST /scan-receipt` does not redirect
-on success: it renders `scan_receipt.html` directly from the POST handler.
-Nothing here is written to the database, so there's no state to reload from
-a redirect, and round-tripping a photo through a redirect URL isn't
-practical.
+on success: it renders `scan_receipt.html` directly from the POST handler —
+there's no natural redirect target since inserting pending items isn't the
+kind of state this app's other forms reload from, and round-tripping a photo
+through a redirect URL isn't practical.
 
 Requires `WFD_GEMINI_API_KEY` (see [Configuration](#configuration)) — without
 one, the page still renders, but every scan fails with an error banner.
+
+#### Queue tab
+
+`/scan-receipt` has a second tab, "Queue" (`?tab=queue`), same tab-switcher
+pattern as the [Ingredients page](#ingredients-page-get-ingredients)'s
+Ingredients/Combined ingredients tabs — both panels render every load, and
+`templates/scripts.html`'s `tabs-script` swaps which one is visible without a
+reload, falling back to a plain navigation (and the server rendering the
+right panel's `hidden` attribute from `?tab=`) with JavaScript disabled.
+
+It lists every `pending_pantry_items` row (`loadQueueTab` in
+`scan_receipt.go`), filterable by status via checkboxes — same nesting-safe
+hidden-form technique as the pantry/ingredients pages' tag filters. By
+default (a fresh page load, no filter submitted yet) `pending`, `processing`
+and `rejected` are checked and `approved` isn't, since an approved item has
+already become a real pantry ingredient and doesn't need to keep cluttering
+the queue. Unchecking every box and submitting is honored as "show nothing"
+rather than falling back to the default set — a hidden `status_filter=1`
+field on the filter form is what tells the handler a filter was actually
+submitted, as opposed to just a plain link/reload landing on the tab.
+
+Each row is tinted by its status to make the queue scannable at a glance:
+**rejected** items are red and sorted to the top, **processing** is blue,
+**approved** is green, and **pending** keeps the card's regular color (see
+`.wfd-status-item--danger`/`--info`/`--success` in `styles.html`, and
+`queueItemTone`/`BuildQueueItems` in `scan_receipt_queue_view.go`). There is
+still no approve/reject action — this tab is read-only for now.
 
 ### Live search
 

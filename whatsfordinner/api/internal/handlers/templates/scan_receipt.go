@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/SamuelHamann/NAS-Apis/whatsfordinner/internal/gemini"
+	"github.com/SamuelHamann/NAS-Apis/whatsfordinner/internal/store"
 )
 
 // ScanReceiptPageData is the view model for templates/scan_receipt.html.
@@ -17,6 +18,19 @@ type ScanReceiptPageData struct {
 	// until a photo has been submitted.
 	Result *ReceiptScanResult
 	Error  string
+
+	// ActiveTab is "scan" (default) or "queue" — which panel the tab
+	// switcher shows first on page load (before any client-side JS takes
+	// over). See templates/scripts.html's "tabs-script".
+	ActiveTab string
+
+	// QueueItems is every pending_pantry_items row matching SelectedStatuses,
+	// rejected items first (see BuildQueueItems).
+	QueueItems []QueueItemView
+	// SelectedStatuses backs the Queue tab's status checkboxes' checked state.
+	SelectedStatuses map[string]bool
+	// StatusOptions backs the Queue tab's status checkbox list.
+	StatusOptions []QueueStatusOption
 }
 
 // ReceiptScanResult is the standard JSON shape Gemini is asked to return for
@@ -99,6 +113,23 @@ const maxReceiptPhotoBytes = 10 << 20 // 10 MiB
 // one — e.g. the receipt just counts individual items rather than weighing
 // or measuring them.
 const defaultReceiptUnit = "unit"
+
+// defaultReceiptQuantity is used for an item's Quantity when Gemini doesn't
+// return one — pending_pantry_items.quantity is NOT NULL, and a receipt line
+// with no quantity shown is a single unit of that item.
+const defaultReceiptQuantity float64 = 1
+
+// pending_pantry_items.status values. An item with a derivable UPC waits for
+// review ("pending"); one without is rejected immediately since there's no
+// barcode to ever match it against. "processing"/"approved" are set by a
+// review flow that doesn't exist yet — scanned items never reach them on
+// their own.
+const (
+	pendingPantryStatusPending    = "pending"
+	pendingPantryStatusProcessing = "processing"
+	pendingPantryStatusApproved   = "approved"
+	pendingPantryStatusRejected   = "rejected"
+)
 
 // upcDigits is how many digits a UPC-A code has before its trailing check
 // digit — receipts print the bare 11 digits (or fewer, missing leading
@@ -232,11 +263,46 @@ func (h *Handler) ScanReceiptSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Every item is queued. One with no UPC (no code printed on the receipt,
+	// or one that didn't look like a bare UPC) is saved with an empty upc
+	// and status "rejected" straight away, since there's no barcode to ever
+	// match it against.
+	for _, item := range result.Items {
+		upc := ""
+		status := pendingPantryStatusRejected
+		if item.UPC != nil {
+			upc = *item.UPC
+			status = pendingPantryStatusPending
+		}
+		quantity := defaultReceiptQuantity
+		if item.Quantity != nil {
+			quantity = *item.Quantity
+		}
+		if _, err := h.store.CreatePendingPantryItem(r.Context(), store.PendingPantryItemInput{
+			UPC:      upc,
+			Name:     item.Name,
+			Quantity: quantity,
+			Unit:     *item.Unit,
+			Price:    item.Price,
+			Status:   status,
+		}); err != nil {
+			h.logger.Error("save pending pantry item", "error", err, "upc", upc)
+		}
+	}
+
 	data.Result = &result
 	h.renderScanReceiptPage(w, r, data)
 }
 
+// renderScanReceiptPage fills in the Queue tab's fields (shared by both the
+// plain GET page and a POST scan result) and renders scan_receipt.html.
 func (h *Handler) renderScanReceiptPage(w http.ResponseWriter, r *http.Request, data ScanReceiptPageData) {
+	if err := h.loadQueueTab(r, &data); err != nil {
+		h.logger.Error("list pending pantry items", "error", err)
+		http.Error(w, "failed to load queue", http.StatusInternalServerError)
+		return
+	}
+
 	ts, ok := h.templatesCache["scan_receipt.html"]
 	if !ok {
 		http.Error(w, "template not found", http.StatusInternalServerError)
@@ -246,4 +312,50 @@ func (h *Handler) renderScanReceiptPage(w http.ResponseWriter, r *http.Request, 
 		h.logger.Error("render template", "template", "scan_receipt.html", "error", err)
 		http.Error(w, "failed to render page", http.StatusInternalServerError)
 	}
+}
+
+// loadQueueTab reads the Queue tab's state from r's query string — which tab
+// is active, and (via ?status_filter=1&status=...) whether a status filter
+// was explicitly submitted — and populates data's ActiveTab/StatusOptions/
+// SelectedStatuses/QueueItems accordingly.
+//
+// With no explicit filter (a fresh page load, or the "Queue" tab link),
+// defaultQueueStatuses is used. An explicit filter with zero statuses
+// checked (the user unchecked every box) is honored as-is — an empty
+// result — rather than falling back to "no filter" like an unset query
+// param would.
+func (h *Handler) loadQueueTab(r *http.Request, data *ScanReceiptPageData) error {
+	q := r.URL.Query()
+
+	data.ActiveTab = "scan"
+	if q.Get("tab") == "queue" {
+		data.ActiveTab = "queue"
+	}
+	data.StatusOptions = queueStatusOptions
+
+	statuses := defaultQueueStatuses
+	explicitFilter := q.Has("status_filter")
+	if explicitFilter {
+		statuses = q["status"]
+	}
+
+	data.SelectedStatuses = make(map[string]bool, len(statuses))
+	for _, s := range statuses {
+		data.SelectedStatuses[s] = true
+	}
+
+	// An explicit filter selecting nothing means "show nothing" — skip the
+	// query rather than letting ListPendingPantryItems treat an empty slice
+	// as "no filter".
+	if explicitFilter && len(statuses) == 0 {
+		data.QueueItems = nil
+		return nil
+	}
+
+	rows, err := h.store.ListPendingPantryItems(r.Context(), store.PendingPantryItemFilter{Statuses: statuses})
+	if err != nil {
+		return err
+	}
+	data.QueueItems = BuildQueueItems(rows)
+	return nil
 }

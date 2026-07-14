@@ -941,9 +941,14 @@
      stays visibly green even inside an "All recipes" alphabetical card. */
   .wfd-status-item--success { background: rgba(22, 163, 74, 0.10); }
   .wfd-status-item--warning { background: rgba(224, 154, 42, 0.14); }
+  /* Red (danger): the scan-receipt Queue tab's rejected items. */
+  .wfd-status-item--danger { background: var(--wfd-danger-soft); }
+  /* Blue (info): the scan-receipt Queue tab's processing items. */
+  .wfd-status-item--info { background: rgba(37, 99, 235, 0.10); }
   @media (prefers-color-scheme: dark) {
     .wfd-status-item--success { background: rgba(74, 222, 128, 0.14); }
     .wfd-status-item--warning { background: rgba(255, 179, 61, 0.18); }
+    .wfd-status-item--info { background: rgba(96, 165, 250, 0.16); }
   }
 
   /* Recipe rows are links through to the detail page (GET /recipes/{id});

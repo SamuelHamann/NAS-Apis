@@ -131,6 +131,22 @@ type PastCookedRecipe struct {
 	LastCookedAt time.Time `json:"last_cooked_at" db:"last_cooked_at"`
 }
 
+// PendingPantryItem maps to the pending_pantry_items table: a receipt-scanned
+// item awaiting review before it's turned into a real PantryIngredient.
+// Status starts at "pending" and moves through "processing" to either
+// "approved" or "rejected".
+type PendingPantryItem struct {
+	ID        uuid.UUID `json:"id" db:"id"`
+	UPC       string    `json:"upc" db:"upc"`
+	Name      string    `json:"name" db:"name"`
+	Quantity  float64   `json:"quantity" db:"quantity"`
+	UnitID    *int64    `json:"unit_id" db:"unit_id"`
+	Price     *float64  `json:"price" db:"price"`
+	Status    string    `json:"status" db:"status"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
 // APIKey maps to the api_keys table. The UUID id IS the key — clients pass it
 // verbatim in the X-Api-Key request header.
 type APIKey struct {

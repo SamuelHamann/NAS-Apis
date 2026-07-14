@@ -7,6 +7,10 @@
 
     POST renders this same template directly (see ScanReceiptSubmit's doc
     comment) rather than redirecting, since nothing here is persisted.
+
+    A second "Queue" tab shows the pending_pantry_items rows every scan
+    queues up (see loadQueueTab in scan_receipt.go), filterable by status via
+    checkboxes. Same tab-switcher pattern as templates/ingredients.html.
 */}}
 <!DOCTYPE html>
 <html lang="en">
@@ -21,53 +25,121 @@
 
   <main class="wfd-main wfd-container">
     <h1 class="wfd-page-title">Scan receipt</h1>
-    <p class="wfd-page-subtitle">Take a photo of a receipt to see what was bought.</p>
 
     {{if .Error}}
     <p class="wfd-error-banner">{{.Error}}</p>
     {{end}}
 
-    <form method="post" action="/scan-receipt" enctype="multipart/form-data" class="wfd-pantry-form">
-      <label class="wfd-pantry-form__wide">
-        Receipt photo
-        <input type="file" name="photo" accept="image/*" capture="environment" required />
-      </label>
-      <div class="wfd-pantry-form__actions">
-        <button type="submit" class="wfd-btn wfd-btn--primary">
-          {{template "icon-camera"}}
-          <span>Scan</span>
-        </button>
-      </div>
-    </form>
+    <div class="wfd-tabs" role="tablist">
+      <a href="/scan-receipt?tab=scan" class="wfd-tabs__btn" data-tab-target="scan-panel"
+         role="tab" aria-selected="{{if ne .ActiveTab "queue"}}true{{else}}false{{end}}">Scan</a>
+      <a href="/scan-receipt?tab=queue" class="wfd-tabs__btn" data-tab-target="queue-panel"
+         role="tab" aria-selected="{{if eq .ActiveTab "queue"}}true{{else}}false{{end}}">Queue</a>
+    </div>
 
-    {{if .Result}}
-    <section class="wfd-recipe-section">
-      <h2 class="wfd-section-title">What Gemini found</h2>
+    <section id="scan-panel" class="wfd-tabs__panel" data-tab-panel {{if eq .ActiveTab "queue"}}hidden{{end}}>
+      <p class="wfd-page-subtitle">Take a photo of a receipt to see what was bought.</p>
 
-      {{if not .Result.Items}}
-        <p class="wfd-list-empty">No items could be read from this receipt.</p>
-      {{else}}
-        <ul class="wfd-ingredient-list">
-          {{range .Result.Items}}
-          <li class="wfd-ingredient-item">
-            <span class="wfd-ingredient-item__name">{{.Name}}</span>
-            {{if .Quantity}}<span class="wfd-ingredient-item__qty">Qty {{deref .Quantity}} {{deref .Unit}}</span>{{end}}
-            {{if .Price}}<span class="wfd-ingredient-item__qty">${{deref .Price}}</span>{{end}}
-            {{if .Code}}<span class="wfd-ingredient-item__note">Code: {{deref .Code}}</span>{{end}}
-            {{if .UPC}}<span class="wfd-ingredient-item__note">UPC: {{deref .UPC}}</span>{{end}}
-          </li>
-          {{end}}
-        </ul>
-      {{end}}
+      <form method="post" action="/scan-receipt" enctype="multipart/form-data" class="wfd-pantry-form">
+        <label class="wfd-pantry-form__wide">
+          Receipt photo
+          <input type="file" name="photo" accept="image/*" capture="environment" required />
+        </label>
+        <div class="wfd-pantry-form__actions">
+          <button type="submit" class="wfd-btn wfd-btn--primary">
+            {{template "icon-camera"}}
+            <span>Scan</span>
+          </button>
+        </div>
+      </form>
 
-      {{if or .Result.Total .Result.Taxes}}
-      <div class="wfd-recipe-meta" style="margin-top:0.75rem;">
-        {{if .Result.Total}}<span>Total <strong>${{deref .Result.Total}}</strong></span>{{end}}
-        {{range .Result.Taxes}}<span>{{.Name}} <strong>${{.Amount}}</strong></span>{{end}}
-      </div>
+      {{if .Result}}
+      <section class="wfd-recipe-section">
+        <h2 class="wfd-section-title">What Gemini found</h2>
+
+        {{if not .Result.Items}}
+          <p class="wfd-list-empty">No items could be read from this receipt.</p>
+        {{else}}
+          <ul class="wfd-ingredient-list">
+            {{range .Result.Items}}
+            <li class="wfd-ingredient-item">
+              <span class="wfd-ingredient-item__name">{{.Name}}</span>
+              {{if .Quantity}}<span class="wfd-ingredient-item__qty">Qty {{deref .Quantity}} {{deref .Unit}}</span>{{end}}
+              {{if .Price}}<span class="wfd-ingredient-item__qty">${{deref .Price}}</span>{{end}}
+              {{if .Code}}<span class="wfd-ingredient-item__note">Code: {{deref .Code}}</span>{{end}}
+              {{if .UPC}}<span class="wfd-ingredient-item__note">UPC: {{deref .UPC}}</span>{{end}}
+            </li>
+            {{end}}
+          </ul>
+        {{end}}
+
+        {{if or .Result.Total .Result.Taxes}}
+        <div class="wfd-recipe-meta" style="margin-top:0.75rem;">
+          {{if .Result.Total}}<span>Total <strong>${{deref .Result.Total}}</strong></span>{{end}}
+          {{range .Result.Taxes}}<span>{{.Name}} <strong>${{.Amount}}</strong></span>{{end}}
+        </div>
+        {{end}}
+      </section>
       {{end}}
     </section>
-    {{end}}
+
+    <section id="queue-panel" class="wfd-tabs__panel" data-tab-panel {{if ne .ActiveTab "queue"}}hidden{{end}}>
+      <p class="wfd-page-subtitle">{{len .QueueItems}} item{{if ne (len .QueueItems) 1}}s{{end}} in the queue.</p>
+
+      {{/* Nesting-safe layout: the filter form is a zero-content sibling of
+           the visible checkboxes (see the tag-filter comment on
+           ingredients.html/pantry.html for the full explanation).
+           status_filter marks that this form was actually submitted, so an
+           explicit "everything unchecked" is honored as an empty result
+           instead of falling back to the default status set. */}}
+      <form id="queue-view" method="get" action="/scan-receipt" hidden>
+        <input type="hidden" name="tab" value="queue" />
+        <input type="hidden" name="status_filter" value="1" />
+      </form>
+
+      <div class="wfd-toolbar">
+        <div class="wfd-toolbar__row">
+          <span class="wfd-toolbar__group-label" style="display:inline-flex;align-items:center;gap:0.35rem;">
+            {{template "icon-filter"}} Status
+          </span>
+          <div class="wfd-tag-filter">
+            {{range .StatusOptions}}
+            <label class="wfd-tag-filter__chip">
+              <input type="checkbox" name="status" value="{{.Value}}" form="queue-view"
+                     {{if index $.SelectedStatuses .Value}}checked{{end}} onchange="this.form.submit()" />
+              <span>{{.Label}}</span>
+            </label>
+            {{end}}
+          </div>
+        </div>
+      </div>
+
+      {{if not .QueueItems}}
+        <p class="wfd-list-empty">No items match this status filter.</p>
+      {{else}}
+        <section class="wfd-status-card">
+          <div>
+            {{range .QueueItems}}
+            <div class="wfd-status-item{{if .Tone}} wfd-status-item--{{.Tone}}{{end}}">
+              <div class="wfd-status-item__body">
+                <div class="wfd-status-item__title">
+                  <span>{{.Name}}</span>
+                  <span class="wfd-pantry-item__qty">{{.Quantity}}{{if .UnitName}} {{deref .UnitName}}{{end}}</span>
+                </div>
+                <div class="wfd-status-item__meta">
+                  <span>Status <strong>{{.Status}}</strong></span>
+                  {{if .Price}}<span>Price <strong>${{deref .Price}}</strong></span>{{end}}
+                  {{if .UPC}}<span>UPC <strong>{{.UPC}}</strong></span>{{end}}
+                </div>
+              </div>
+            </div>
+            {{end}}
+          </div>
+        </section>
+      {{end}}
+    </section>
   </main>
+
+  {{template "tabs-script" .}}
 </body>
 </html>
