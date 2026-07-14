@@ -7,7 +7,7 @@ own folder and is independently buildable and deployable.
 
 | API                                | Language       | Description                                  | Status                                |
 | ---------------------------------- | -------------- | -------------------------------------------- | ------------------------------------- |
-| [whatsfordinner](./whatsfordinner) | Go | Helps decide what's for dinner (recipes etc) | 🚧 Server-rendered HTML UI + JSON API (WIP) |
+| [whatsfordinner](./whatsfordinner) | Go | Household recipes, pantry tracking, and grocery-receipt scanning | 🚧 Server-rendered HTML UI + JSON API (WIP) |
 
 ## Endpoints overview
 

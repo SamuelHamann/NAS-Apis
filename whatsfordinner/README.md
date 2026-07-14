@@ -1,9 +1,19 @@
 # whatsfordinner API
 
-A small, self-contained Go HTTP API, part of the [NAS-Apis](../README.md) collection.
-It is built with the Go standard library (`net/http`) — no web framework — backed by
-PostgreSQL via [pgx](https://github.com/jackc/pgx), and is designed to run as a
-container on the NAS.
+A self-hosted app that helps a household decide what to cook and keep track
+of what's actually in the kitchen. It manages recipes, tracks pantry stock
+(with expiration dates and storage location), and tells you which recipes
+you can cook right now versus which are missing an ingredient or two. A
+"Scan receipt" feature photographs a grocery receipt, has Gemini read off
+what was bought, derives a UPC for each item, and queues it up
+(`pending_pantry_items`) for a background worker to confirm against
+OpenFoodFacts before it's added to the pantry. It's part of the
+[NAS-Apis](../README.md) collection, meant to run as a single container on a
+home NAS for one household — not a multi-tenant or public-facing service.
+
+Technically, it's a small, self-contained Go HTTP API: built with the Go
+standard library (`net/http`) — no web framework — backed by PostgreSQL via
+[pgx](https://github.com/jackc/pgx).
 
 It currently exposes basic CRUD over the core tables (recipes, ingredients, units,
 tags and pantry stock), plus combined ingredients — bundles of component
@@ -11,10 +21,11 @@ ingredients with their own quantity/unit each (`combined_ingredients` /
 `combined_ingredient_items`). The `recipe_ingredients`/`recipe_tags` relationship
 tables are modelled but their endpoints are deferred to a later iteration.
 
-The UI (home page, sign-in) is server-rendered HTML — Go's `html/template`
-reading from [`api/templates`](./api/templates) — served from the same origin
-and process as the API, so the deployed stack is a single container with no
-separate frontend build, no CORS to manage and no reverse proxy required. See
+The UI (home page, sign-in, recipes/pantry/ingredients/scan-receipt pages) is
+server-rendered HTML — Go's `html/template` reading from
+[`api/templates`](./api/templates) — served from the same origin and process
+as the API, so the deployed stack is a single container with no separate
+frontend build, no CORS to manage and no reverse proxy required. See
 [UI pages](#ui-pages) below.
 
 ## Authentication
@@ -47,9 +58,7 @@ INSERT INTO api_keys DEFAULT VALUES RETURNING id;
 
 Use the returned UUID as the value of `X-Api-Key`.
 
----
-
-
+## Prerequisites
 
 - Go 1.25+
 - A reachable PostgreSQL database with the WhatsForDinner schema, provisioned by
