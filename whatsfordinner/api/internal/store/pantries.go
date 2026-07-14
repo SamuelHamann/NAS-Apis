@@ -58,6 +58,41 @@ func (s *Store) ListPantriesForUser(ctx context.Context, userID int64) ([]models
 	return pantries, nil
 }
 
+// CreatePantry inserts a new pantry and returns the stored row.
+func (s *Store) CreatePantry(ctx context.Context, name string) (models.Pantry, error) {
+	rows, err := s.pool.Query(ctx, `
+		INSERT INTO pantry (name)
+		VALUES ($1)
+		RETURNING `+pantryColumnsAll, name)
+	if err != nil {
+		return models.Pantry{}, mapError(err)
+	}
+
+	p, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[models.Pantry])
+	if err != nil {
+		return models.Pantry{}, mapError(err)
+	}
+	return p, nil
+}
+
+// UpdatePantry renames an existing pantry and returns the stored row.
+func (s *Store) UpdatePantry(ctx context.Context, id int64, name string) (models.Pantry, error) {
+	rows, err := s.pool.Query(ctx, `
+		UPDATE pantry
+		SET name = $2, updated_at = now()
+		WHERE id = $1
+		RETURNING `+pantryColumnsAll, id, name)
+	if err != nil {
+		return models.Pantry{}, mapError(err)
+	}
+
+	p, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[models.Pantry])
+	if err != nil {
+		return models.Pantry{}, mapError(err)
+	}
+	return p, nil
+}
+
 // GetPantry returns a single pantry by ID.
 func (s *Store) GetPantry(ctx context.Context, id int64) (models.Pantry, error) {
 	rows, err := s.pool.Query(ctx, `
@@ -73,6 +108,61 @@ func (s *Store) GetPantry(ctx context.Context, id int64) (models.Pantry, error) 
 		return models.Pantry{}, mapError(err)
 	}
 	return p, nil
+}
+
+// UserPantryAccess is one row of the user_pantry join table: userID has been
+// granted access to pantryID.
+type UserPantryAccess struct {
+	UserID   int64
+	PantryID int64
+}
+
+// ListUserPantryAccess returns every user_pantry row, for building the
+// admin page's user/pantry access matrix.
+func (s *Store) ListUserPantryAccess(ctx context.Context) ([]UserPantryAccess, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id_user, id_pantry FROM user_pantry`)
+	if err != nil {
+		return nil, mapError(err)
+	}
+
+	access, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (UserPantryAccess, error) {
+		var a UserPantryAccess
+		err := row.Scan(&a.UserID, &a.PantryID)
+		return a, err
+	})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return access, nil
+}
+
+// SetUserPantryAccess replaces every user_pantry row with access (duplicate
+// pairs are the caller's responsibility to have already collapsed — there's
+// no unique constraint on (id_pantry, id_user) to lean on here), in a single
+// transaction — the admin page always submits the full desired state of the
+// matrix rather than one change at a time.
+func (s *Store) SetUserPantryAccess(ctx context.Context, access []UserPantryAccess) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return mapError(err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `DELETE FROM user_pantry`); err != nil {
+		return mapError(err)
+	}
+	for _, a := range access {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO user_pantry (id_pantry, id_user)
+			VALUES ($1, $2)`, a.PantryID, a.UserID); err != nil {
+			return mapError(err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return mapError(err)
+	}
+	return nil
 }
 
 // GetDefaultPantry returns the first pantry (by id). It is used as the

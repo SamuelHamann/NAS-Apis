@@ -45,6 +45,10 @@ available while that migration is in progress.
 | CRUD      | `/past-cooked`, `/past-cooked/{id}` | Cooking history (UUID id)          |
 | GET       | `/scan-receipt`                   | Scan receipt page (HTML, mobile-only entry point): photo-upload form, plus a "Queue" tab listing `pending_pantry_items` filterable by status |
 | POST      | `/scan-receipt`                   | Send the photo to Gemini (structured JSON output), render the parsed item list + total/taxes, and queue every item as a `pending_pantry_items` row against the selected pantry (`pending` if a UPC was derived, `rejected` otherwise) (HTML form) |
+| GET       | `/settings/admin`                 | Admin page (HTML): create/rename pantries, plus a user x pantry checkbox matrix controlling who can see which pantry |
+| POST      | `/settings/admin/pantries`        | Create a pantry (HTML form)          |
+| POST      | `/settings/admin/pantries/{id}/update` | Rename a pantry (HTML form)     |
+| POST      | `/settings/admin/pantry-access`   | Replace the whole user x pantry access matrix (`user_pantry` join table) in one submission (HTML form) |
 
 See [`whatsfordinner/README.md`](./whatsfordinner/README.md) for full details,
 request bodies and configuration. The UI (navbar, home page, sign-in) is

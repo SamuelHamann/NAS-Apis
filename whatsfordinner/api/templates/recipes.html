@@ -25,13 +25,18 @@
     <form id="recipes-view" method="get" action="/recipes" hidden></form>
 
     <div class="wfd-toolbar">
-      <div class="wfd-toolbar__row">
+      <div class="wfd-toolbar__row wfd-toolbar__row--between">
         <label class="wfd-search">
           {{template "icon-search"}}
           <input type="search" placeholder="Search recipes…" aria-label="Search recipes"
                  data-search-input="#recipes-cards" data-search-empty="#recipes-search-empty"
                  autocomplete="off" />
         </label>
+
+        <a class="wfd-btn wfd-btn--primary" href="/recipes/new">
+          {{template "icon-plus"}}
+          <span>New recipe</span>
+        </a>
       </div>
 
       <div class="wfd-toolbar__row wfd-toolbar__row--between">

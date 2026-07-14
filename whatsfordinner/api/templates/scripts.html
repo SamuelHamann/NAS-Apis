@@ -153,3 +153,206 @@
 })();
 </script>
 {{end}}
+
+{{/*
+    Shared vanilla-JS searchable ingredient picker (currently the recipe
+    form's ingredient rows, see recipe_ingredient_row in
+    templates/recipe_form.html). Include once, alongside item-rows-script,
+    via {{template "ingredient-picker-script" .}} — and always AFTER
+    {{template "item-rows-script" .}} in the page (see below for why).
+
+    Each picker is server-rendered as a real, fully-functional
+    <select data-ingredient-picker-select> (identical to the plain picker on
+    the combined-ingredient form) wrapped in a
+    [data-ingredient-picker-combo] search box + dropdown, hidden by default.
+    On load this script hides the <select> and reveals the combo box in its
+    place, but the <select> stays in the DOM and keeps carrying the actual
+    form value (item_ingredient_id) — typing in the search box filters a
+    dropdown built from the <select>'s own <option>s, and picking one (by
+    click) just sets select.value. This means graceful degradation is
+    automatic: with JS disabled the [data-ingredient-picker-combo] element
+    stays hidden and the plain <select> is what's shown and submitted.
+
+    "+ Create '<query>'" appears in the dropdown when the typed text doesn't
+    exactly match an existing option. Picking it reveals a small panel
+    (tag checkboxes + Create & use) that POSTs to /ingredients/quick-create
+    (see IngredientsQuickCreate in ingredients_page.go) and, on success,
+    adds the new ingredient as an <option> to EVERY picker's <select> on the
+    page (not just this row's) and selects it — no page reload.
+
+    Rows added via item-rows-script's "+ Add ingredient" button are cloned
+    from a <template> and so start unenhanced (plain, working <select>) —
+    this script also listens on [data-item-row-add] and enhances whatever
+    picker ends up in the newly appended row. That only works if
+    item-rows-script's own click listener (which does the actual
+    cloning/appending) is registered first, i.e. its template include
+    appears earlier in the page than this one's.
+*/}}
+{{define "ingredient-picker-script"}}
+<script>
+(function () {
+  function enhance(picker) {
+    if (picker.dataset.enhanced) return;
+    picker.dataset.enhanced = '1';
+
+    var select = picker.querySelector('[data-ingredient-picker-select]');
+    var combo = picker.querySelector('[data-ingredient-picker-combo]');
+    var search = picker.querySelector('[data-ingredient-picker-search]');
+    var menu = picker.querySelector('[data-ingredient-picker-menu]');
+    var options = picker.querySelector('[data-ingredient-picker-options]');
+    var createBtn = picker.querySelector('[data-ingredient-picker-create]');
+    var createQuery = picker.querySelector('[data-ingredient-picker-create-query]');
+    var createPanel = picker.querySelector('[data-ingredient-picker-create-panel]');
+    var createSubmit = picker.querySelector('[data-ingredient-picker-create-submit]');
+    var createCancel = picker.querySelector('[data-ingredient-picker-create-cancel]');
+    var createError = picker.querySelector('[data-ingredient-picker-create-error]');
+    if (!select || !combo || !search || !menu || !options) return;
+
+    select.hidden = true;
+    combo.hidden = false;
+
+    // Prefill the search box from the select's initial selection (edit mode).
+    if (select.value) {
+      var current = select.options[select.selectedIndex];
+      if (current) search.value = current.text;
+    }
+
+    function selectableOptions() {
+      return Array.prototype.slice.call(select.options).filter(function (o) { return o.value !== ''; });
+    }
+
+    function renderOptions(query) {
+      options.innerHTML = '';
+      var q = query.trim().toLowerCase();
+      selectableOptions().forEach(function (opt) {
+        if (q !== '' && opt.text.toLowerCase().indexOf(q) === -1) return;
+        var li = document.createElement('li');
+        li.className = 'wfd-ingredient-picker__option';
+        li.setAttribute('data-ingredient-picker-option', '');
+        li.setAttribute('data-value', opt.value);
+        li.tabIndex = -1;
+        li.textContent = opt.text;
+        options.appendChild(li);
+      });
+
+      var exact = q !== '' && selectableOptions().some(function (opt) {
+        return opt.text.toLowerCase() === q;
+      });
+      if (createBtn) {
+        createBtn.hidden = q === '' || exact;
+        if (createQuery) createQuery.textContent = query.trim();
+      }
+    }
+
+    function openMenu() {
+      menu.hidden = false;
+      renderOptions(search.value);
+    }
+    function closeMenu() {
+      menu.hidden = true;
+      if (createPanel) createPanel.hidden = true;
+    }
+    function pick(value, text) {
+      select.value = value;
+      search.value = text;
+      closeMenu();
+    }
+
+    search.addEventListener('input', function () {
+      select.value = ''; // typing invalidates whatever was picked before
+      openMenu();
+    });
+    search.addEventListener('focus', openMenu);
+
+    options.addEventListener('click', function (event) {
+      var li = event.target.closest('[data-ingredient-picker-option]');
+      if (!li) return;
+      var value = li.getAttribute('data-value');
+      var opt = select.querySelector('option[value="' + value + '"]');
+      pick(value, opt ? opt.text : li.textContent);
+    });
+
+    if (createBtn) {
+      createBtn.addEventListener('click', function () {
+        if (createPanel) createPanel.hidden = false;
+      });
+    }
+    if (createCancel) {
+      createCancel.addEventListener('click', function () { createPanel.hidden = true; });
+    }
+    if (createSubmit) {
+      createSubmit.addEventListener('click', function () {
+        var name = search.value.trim();
+        if (!name) return;
+
+        var tagIDs = [];
+        picker.querySelectorAll('[data-ingredient-picker-create-tag]:checked').forEach(function (cb) {
+          tagIDs.push(cb.value);
+        });
+
+        var body = new URLSearchParams();
+        body.set('name', name);
+        tagIDs.forEach(function (id) { body.append('tag_ids', id); });
+
+        if (createError) createError.hidden = true;
+        createSubmit.disabled = true;
+
+        fetch('/ingredients/quick-create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString(),
+        })
+          .then(function (resp) {
+            return resp.json().then(function (data) { return { ok: resp.ok, data: data }; });
+          })
+          .then(function (result) {
+            createSubmit.disabled = false;
+            if (!result.ok) {
+              if (createError) {
+                createError.textContent = (result.data && result.data.error) || 'something went wrong';
+                createError.hidden = false;
+              }
+              return;
+            }
+
+            document.querySelectorAll('[data-ingredient-picker-select]').forEach(function (sel) {
+              var opt = document.createElement('option');
+              opt.value = result.data.id;
+              opt.text = result.data.name;
+              sel.appendChild(opt);
+            });
+
+            pick(String(result.data.id), result.data.name);
+          })
+          .catch(function () {
+            createSubmit.disabled = false;
+            if (createError) {
+              createError.textContent = 'network error, please try again';
+              createError.hidden = false;
+            }
+          });
+      });
+    }
+
+    document.addEventListener('click', function (event) {
+      if (!picker.contains(event.target)) closeMenu();
+    });
+  }
+
+  document.querySelectorAll('[data-ingredient-picker]').forEach(enhance);
+
+  // A row added via item-rows-script's "+ Add ingredient" button starts
+  // unenhanced (see doc comment above) — enhance whatever picker ends up
+  // inside the row it just appended.
+  document.querySelectorAll('[data-item-row-add]').forEach(function (addBtn) {
+    addBtn.addEventListener('click', function () {
+      var container = addBtn.closest('[data-item-rows]');
+      var list = container && container.querySelector('[data-item-rows-list]');
+      var lastRow = list && list.lastElementChild;
+      if (!lastRow) return;
+      lastRow.querySelectorAll('[data-ingredient-picker]').forEach(enhance);
+    });
+  });
+})();
+</script>
+{{end}}

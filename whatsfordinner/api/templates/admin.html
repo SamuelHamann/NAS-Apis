@@ -1,0 +1,105 @@
+{{/*
+    Admin page: GET /settings/admin, linked from the navbar's settings menu
+    (see navbar.html's "Admin page" entry). Two things live here:
+
+      1. Create/rename a pantry — see the "Pantries" section below. There's
+         no delete yet.
+      2. A user x pantry checkbox matrix controlling who can see which
+         pantry via the user_pantry join table (see .Access in
+         admin_page.go) — submitted as one form, replacing the whole
+         matrix at once (POST /settings/admin/pantry-access) rather than
+         one cell at a time.
+*/}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>{{.Title}} · What's for Dinner</title>
+  {{template "styles" .}}
+</head>
+<body>
+  {{template "navbar" .}}
+
+  <main class="wfd-main wfd-container">
+    <h1 class="wfd-page-title">Admin</h1>
+    <p class="wfd-page-subtitle">Manage pantries and who can see them.</p>
+
+    {{if .Error}}
+    <p class="wfd-error-banner">{{.Error}}</p>
+    {{end}}
+
+    <section class="wfd-recipe-section">
+      <h2 class="wfd-section-title">Pantries</h2>
+
+      <ul class="wfd-list">
+        {{range .Pantries}}
+        <li class="wfd-list-row">
+          <span class="wfd-list-row__main wfd-list-row__name">{{.Name}}</span>
+
+          <details class="wfd-list-row__edit">
+            <summary class="wfd-icon-btn" aria-label="Edit {{.Name}}">{{template "icon-pencil"}}</summary>
+            <form method="post" action="/settings/admin/pantries/{{.ID}}/update" class="wfd-inline-form">
+              <input type="text" name="name" value="{{.Name}}" required maxlength="255" />
+              <button type="submit" class="wfd-btn wfd-btn--primary">Save</button>
+            </form>
+          </details>
+        </li>
+        {{else}}
+        <p class="wfd-list-empty">No pantries yet — create the first one below.</p>
+        {{end}}
+      </ul>
+
+      <details class="wfd-create">
+        <summary class="wfd-btn wfd-btn--primary">+ Create pantry</summary>
+        <form method="post" action="/settings/admin/pantries" class="wfd-inline-form">
+          <input type="text" name="name" placeholder="Pantry name" required maxlength="255" />
+          <button type="submit" class="wfd-btn wfd-btn--primary">Create</button>
+        </form>
+      </details>
+    </section>
+
+    <section class="wfd-recipe-section">
+      <h2 class="wfd-section-title">Pantry access</h2>
+
+      {{if not .Users}}
+        <p class="wfd-list-empty">No users yet — create one from “Change user” first.</p>
+      {{else if not .Pantries}}
+        <p class="wfd-list-empty">Create a pantry above first.</p>
+      {{else}}
+      <p class="wfd-page-subtitle">Which users can see which pantries (e.g. on the Pantry page's picker).</p>
+      <form method="post" action="/settings/admin/pantry-access">
+        <div class="wfd-access-matrix-wrap">
+          <table class="wfd-access-matrix">
+            <thead>
+              <tr>
+                <th scope="col">User</th>
+                {{range .Pantries}}<th scope="col">{{.Name}}</th>{{end}}
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Users}}
+              {{ $user := . }}
+              <tr>
+                <th scope="row">{{$user.Username}}</th>
+                {{range $.Pantries}}
+                <td>
+                  <input type="checkbox" name="access" value="{{$user.ID}}:{{.ID}}"
+                         aria-label="{{$user.Username}} — {{.Name}}"
+                         {{if index (index $.Access $user.ID) .ID}}checked{{end}} />
+                </td>
+                {{end}}
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        <div class="wfd-pantry-form__actions">
+          <button type="submit" class="wfd-btn wfd-btn--primary">Save access</button>
+        </div>
+      </form>
+      {{end}}
+    </section>
+  </main>
+</body>
+</html>

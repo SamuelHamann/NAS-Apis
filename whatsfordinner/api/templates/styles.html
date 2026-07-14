@@ -438,6 +438,85 @@
     font-size: 0.9rem;
   }
 
+  /* --- Searchable ingredient picker (recipe form's ingredient rows) ------
+
+     .wfd-ingredient-picker is the positioning context for the dropdown
+     menu/create-panel below, which are position:absolute so they overlay
+     the row instead of pushing it (and every row after it) down the page.
+     See "ingredient-picker-script" in scripts.html for the JS this backs. */
+  .wfd-ingredient-picker {
+    position: relative;
+    min-width: 0;
+  }
+  .wfd-ingredient-picker__select,
+  .wfd-ingredient-picker__search {
+    width: 100%;
+  }
+  .wfd-ingredient-picker__menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    margin-top: 0.25rem;
+    max-height: 220px;
+    overflow-y: auto;
+    background: var(--wfd-surface);
+    border: 1px solid var(--wfd-border);
+    border-radius: var(--wfd-radius-sm);
+    box-shadow: var(--wfd-shadow);
+  }
+  .wfd-ingredient-picker__options {
+    list-style: none;
+    margin: 0;
+    padding: 0.25rem;
+  }
+  .wfd-ingredient-picker__option {
+    padding: 0.45rem 0.6rem;
+    border-radius: var(--wfd-radius-sm);
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+  .wfd-ingredient-picker__option:hover {
+    background: var(--wfd-surface-alt);
+  }
+  .wfd-ingredient-picker__create {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.5rem 0.6rem;
+    border: none;
+    border-top: 1px solid var(--wfd-border);
+    background: none;
+    color: var(--wfd-primary);
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .wfd-ingredient-picker__create:hover {
+    background: var(--wfd-surface-alt);
+  }
+  .wfd-ingredient-picker__create-panel {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    margin-top: 0.25rem;
+    padding: 0.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    background: var(--wfd-surface);
+    border: 1px solid var(--wfd-border);
+    border-radius: var(--wfd-radius-sm);
+    box-shadow: var(--wfd-shadow);
+  }
+  .wfd-ingredient-picker__create-panel .wfd-error-banner {
+    margin: 0;
+  }
+
   /* --- Editable list (users list on /login; reusable for future lists) --- */
   .wfd-list {
     list-style: none;
@@ -528,6 +607,49 @@
   }
 
   .wfd-create { margin-top: 0.25rem; }
+
+  /* --- Admin page: user x pantry access matrix --------------------------- */
+
+  /* Horizontal scroll container so a household with many pantries doesn't
+     blow out the layout on narrow viewports — the table itself never
+     shrinks below a readable width. */
+  .wfd-access-matrix-wrap {
+    overflow-x: auto;
+    margin-bottom: 1rem;
+    border: 1px solid var(--wfd-border);
+    border-radius: var(--wfd-radius-md);
+    background: var(--wfd-surface);
+    box-shadow: var(--wfd-shadow);
+  }
+  .wfd-access-matrix {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 360px;
+  }
+  .wfd-access-matrix th,
+  .wfd-access-matrix td {
+    padding: 0.6rem 0.85rem;
+    border-bottom: 1px solid var(--wfd-border);
+    text-align: center;
+    white-space: nowrap;
+  }
+  .wfd-access-matrix thead th {
+    background: var(--wfd-surface-alt);
+    font-weight: 700;
+  }
+  .wfd-access-matrix tbody th {
+    text-align: left;
+    font-weight: 600;
+  }
+  .wfd-access-matrix tbody tr:last-child th,
+  .wfd-access-matrix tbody tr:last-child td {
+    border-bottom: none;
+  }
+  .wfd-access-matrix input[type="checkbox"] {
+    width: 1.15rem;
+    height: 1.15rem;
+    accent-color: var(--wfd-primary);
+  }
 
   /* --- Pantry page ------------------------------------------------------ */
 
@@ -771,6 +893,18 @@
     font: inherit;
     font-size: 1rem;
   }
+  .wfd-pantry-form textarea {
+    height: auto;
+    min-height: 5.5rem;
+    padding: 0.6rem 0.7rem;
+    border-radius: var(--wfd-radius-sm);
+    border: 1px solid var(--wfd-border);
+    background: var(--wfd-surface);
+    color: var(--wfd-text);
+    font: inherit;
+    font-size: 1rem;
+    resize: vertical;
+  }
   /* A checkbox field (e.g. "Create a combined ingredient from this recipe")
      shouldn't stack under its own label text or inherit the text-input
      sizing above — lay it out as a single row with the box at its native
@@ -801,7 +935,8 @@
   }
   .wfd-combined-fields label { flex: 1 1 160px; }
   .wfd-pantry-form input:focus-visible,
-  .wfd-pantry-form select:focus-visible {
+  .wfd-pantry-form select:focus-visible,
+  .wfd-pantry-form textarea:focus-visible {
     outline: 2px solid var(--wfd-primary);
     outline-offset: 1px;
   }

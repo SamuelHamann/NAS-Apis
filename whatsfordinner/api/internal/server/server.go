@@ -144,6 +144,15 @@ func (s *Server) Routes() http.Handler {
 	// instructions for a single recipe. See templates/recipe_detail.html.
 	mux.HandleFunc("GET /recipes/{id}", h.RecipeDetailPage)
 
+	// Recipe create/edit: full form (fields + ingredient list + tags), see
+	// recipe_form_page.go/templates/recipe_form.html. "/recipes/new" is a
+	// literal path segment, so it takes precedence over the "{id}" wildcard
+	// above rather than being parsed as an id.
+	mux.HandleFunc("GET /recipes/new", h.RecipeNewPage)
+	mux.HandleFunc("POST /recipes", h.RecipeCreate)
+	mux.HandleFunc("GET /recipes/{id}/edit", h.RecipeEditPage)
+	mux.HandleFunc("POST /recipes/{id}/update", h.RecipeUpdate)
+
 	// Cook a recipe: decrements the chosen pantry's stock for its
 	// ingredients (scaled by a multiplier, floored at zero), records/updates
 	// past_cooked_recipes, and optionally folds the ingredients into a
@@ -167,6 +176,11 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /ingredients/{id}/update", h.IngredientsUpdate)
 	mux.HandleFunc("POST /ingredients/{id}/delete", h.IngredientsDelete)
 
+	// JSON endpoint backing the recipe form's inline ingredient picker (see
+	// templates/scripts.html's "ingredient-picker-script"): creates an
+	// ingredient without a page reload/redirect.
+	mux.HandleFunc("POST /ingredients/quick-create", h.IngredientsQuickCreate)
+
 	// Combined ingredients: bundles of component ingredients with their own
 	// quantity/unit, managed as a second tab on the ingredients page
 	// (?tab=combined) rather than their own GET page.
@@ -181,6 +195,14 @@ func (s *Server) Routes() http.Handler {
 	// internal/gemini and scan_receipt.go.
 	mux.HandleFunc("GET /scan-receipt", h.ScanReceiptPage)
 	mux.HandleFunc("POST /scan-receipt", h.ScanReceiptSubmit)
+
+	// Admin page: create pantries, and a user x pantry checkbox matrix
+	// controlling who can see which pantry (user_pantry join table). Linked
+	// from the navbar's settings menu. See admin_page.go.
+	mux.HandleFunc("GET /settings/admin", h.AdminPage)
+	mux.HandleFunc("POST /settings/admin/pantries", h.AdminCreatePantry)
+	mux.HandleFunc("POST /settings/admin/pantries/{id}/update", h.AdminUpdatePantry)
+	mux.HandleFunc("POST /settings/admin/pantry-access", h.AdminSetPantryAccess)
 
 	return s.withMiddleware(mux)
 }

@@ -1,0 +1,190 @@
+{{/*
+    Recipe create/edit form: GET /recipes/new (Recipe nil) and
+    GET /recipes/{id}/edit (Recipe set) share this one template — only the
+    form's action URL, submit label and prefilled values differ. Submitting
+    posts to /recipes (create) or /recipes/{id}/update (edit); both redirect
+    to the recipe's detail page on success, or back to this form with
+    ?error=... on failure (see recipe_form_page.go).
+
+    The ingredient list is the same repeatable-row picker as the
+    combined-ingredient form (item-rows-script), except each row's
+    ingredient <select> is enhanced into a searchable dropdown with an
+    inline "create a new ingredient" panel — see recipe_ingredient_row below
+    and "ingredient-picker-script" in scripts.html for the full explanation.
+*/}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>{{.Title}} · What's for Dinner</title>
+  {{template "styles" .}}
+</head>
+<body>
+  {{template "navbar" .}}
+
+  <main class="wfd-main wfd-container">
+    <a class="wfd-back-link" href="{{if .Recipe}}/recipes/{{.Recipe.ID}}{{else}}/recipes{{end}}">
+      &larr; {{if .Recipe}}Back to recipe{{else}}Back to recipes{{end}}
+    </a>
+
+    <h1 class="wfd-page-title">{{if .Recipe}}Edit {{.Recipe.Name}}{{else}}New recipe{{end}}</h1>
+
+    {{if .Error}}
+    <p class="wfd-error-banner">{{.Error}}</p>
+    {{end}}
+
+    <form method="post" action="{{if .Recipe}}/recipes/{{.Recipe.ID}}/update{{else}}/recipes{{end}}" class="wfd-pantry-form">
+      <label class="wfd-pantry-form__wide">
+        Name
+        <input type="text" name="name" required maxlength="255" value="{{if .Recipe}}{{.Recipe.Name}}{{end}}" />
+      </label>
+
+      <label class="wfd-pantry-form__wide">
+        Description
+        <textarea name="description" rows="2">{{if and .Recipe .Recipe.Description}}{{deref .Recipe.Description}}{{end}}</textarea>
+      </label>
+
+      <label class="wfd-pantry-form__wide">
+        Instructions
+        <textarea name="instructions" rows="6" placeholder="One step per line">{{if and .Recipe .Recipe.Instructions}}{{deref .Recipe.Instructions}}{{end}}</textarea>
+      </label>
+
+      <label>
+        Servings
+        <input type="number" name="servings" min="0" step="1" value="{{if and .Recipe .Recipe.Servings}}{{deref .Recipe.Servings}}{{end}}" />
+      </label>
+
+      <label>
+        Prep time (minutes)
+        <input type="number" name="prep_time_minutes" min="0" step="1" value="{{if and .Recipe .Recipe.PrepTimeMinutes}}{{deref .Recipe.PrepTimeMinutes}}{{end}}" />
+      </label>
+
+      <label>
+        Cook time (minutes)
+        <input type="number" name="cook_time_minutes" min="0" step="1" value="{{if and .Recipe .Recipe.CookTimeMinutes}}{{deref .Recipe.CookTimeMinutes}}{{end}}" />
+      </label>
+
+      <label>
+        Source URL
+        <input type="url" name="source_url" maxlength="2048" value="{{if and .Recipe .Recipe.SourceURL}}{{deref .Recipe.SourceURL}}{{end}}" />
+      </label>
+
+      {{if .Tags}}
+      <div class="wfd-pantry-form__wide">
+        <label>Tags</label>
+        <div class="wfd-tag-filter">
+          {{range .Tags}}
+          <label class="wfd-tag-filter__chip">
+            <input type="checkbox" name="tag_ids" value="{{.ID}}" {{if index $.SelectedTagIDs .ID}}checked{{end}} />
+            <span>{{.Name}}</span>
+          </label>
+          {{end}}
+        </div>
+      </div>
+      {{end}}
+
+      <div class="wfd-pantry-form__wide">
+        <label>Ingredients</label>
+        <div class="wfd-item-rows" data-item-rows>
+          <div data-item-rows-list>
+            {{if .Items}}
+              {{range .Items}}
+                {{template "recipe_ingredient_row" (dict "RecipeFormPageData" $ "ItemRow" .)}}
+              {{end}}
+            {{else}}
+              {{template "recipe_ingredient_row" (dict "RecipeFormPageData" $ "ItemRow" nil)}}
+            {{end}}
+          </div>
+          <template data-item-row-template>
+            {{template "recipe_ingredient_row" (dict "RecipeFormPageData" $ "ItemRow" nil)}}
+          </template>
+          <button type="button" class="wfd-btn wfd-btn--ghost" data-item-row-add>
+            {{template "icon-plus"}}
+            <span>Add ingredient</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="wfd-pantry-form__actions">
+        <button type="submit" class="wfd-btn wfd-btn--primary">{{if .Recipe}}Save changes{{else}}Create recipe{{end}}</button>
+      </div>
+    </form>
+  </main>
+
+  {{template "item-rows-script" .}}
+  {{template "ingredient-picker-script" .}}
+</body>
+</html>
+
+{{/* -----------------------------------------------------------------------
+     One repeatable ingredient row within the recipe form. Expects a dict
+     with:
+        RecipeFormPageData  (the outer .; used for the Ingredients/Units/Tags
+                             dropdown option lists)
+        ItemRow             (a store.RecipeIngredientEditRow, or nil for a
+                             blank starter/cloned row)
+
+     The ingredient <select> has no `required` attribute (unlike the
+     combined-ingredient form's) — a recipe is allowed to have zero
+     ingredients, so a never-filled-in blank starter row must not block
+     submission. A partially-filled row (e.g. a quantity typed but no
+     ingredient picked) is instead caught server-side (parseRecipeForm).
+   ----------------------------------------------------------------------- */}}
+{{define "recipe_ingredient_row"}}
+{{ $data := .RecipeFormPageData }}
+{{ $row := .ItemRow }}
+<div class="wfd-item-row" data-item-row>
+  <div class="wfd-ingredient-picker" data-ingredient-picker>
+    <select name="item_ingredient_id" class="wfd-ingredient-picker__select" data-ingredient-picker-select>
+      <option value="" disabled {{if not $row}}selected{{end}}>Pick an ingredient…</option>
+      {{range $data.Ingredients}}
+        <option value="{{.ID}}" {{if and $row (eq $row.IngredientID .ID)}}selected{{end}}>{{.Name}}</option>
+      {{end}}
+    </select>
+
+    <div class="wfd-ingredient-picker__combo" data-ingredient-picker-combo hidden>
+      <input type="text" class="wfd-ingredient-picker__search" data-ingredient-picker-search
+             placeholder="Search ingredient…" autocomplete="off" />
+      <div class="wfd-ingredient-picker__menu" data-ingredient-picker-menu hidden>
+        <ul class="wfd-ingredient-picker__options" data-ingredient-picker-options></ul>
+        <button type="button" class="wfd-ingredient-picker__create" data-ingredient-picker-create hidden>
+          + Create “<span data-ingredient-picker-create-query></span>”
+        </button>
+      </div>
+      <div class="wfd-ingredient-picker__create-panel" data-ingredient-picker-create-panel hidden>
+        {{if $data.Tags}}
+        <div class="wfd-tag-filter">
+          {{range $data.Tags}}
+          <label class="wfd-tag-filter__chip">
+            <input type="checkbox" data-ingredient-picker-create-tag value="{{.ID}}" />
+            <span>{{.Name}}</span>
+          </label>
+          {{end}}
+        </div>
+        {{end}}
+        <div class="wfd-pantry-form__actions">
+          <button type="button" class="wfd-btn wfd-btn--ghost" data-ingredient-picker-create-cancel>Cancel</button>
+          <button type="button" class="wfd-btn wfd-btn--primary" data-ingredient-picker-create-submit>Create &amp; use</button>
+        </div>
+        <p class="wfd-error-banner" data-ingredient-picker-create-error hidden></p>
+      </div>
+    </div>
+  </div>
+
+  <input type="number" name="item_quantity" step="0.001" min="0" placeholder="Qty"
+         value="{{if and $row $row.Quantity}}{{deref $row.Quantity}}{{end}}" />
+
+  <select name="item_unit_id">
+    <option value="">— none —</option>
+    {{range $data.Units}}
+      <option value="{{.ID}}" {{if and $row $row.UnitID (eq (deref $row.UnitID) .ID)}}selected{{end}}>{{.Name}}</option>
+    {{end}}
+  </select>
+
+  <input type="text" name="item_note" maxlength="255" placeholder="Note"
+         value="{{if and $row $row.Note}}{{deref $row.Note}}{{end}}" />
+
+  <button type="button" class="wfd-icon-btn" aria-label="Remove ingredient" data-item-row-remove>{{template "icon-trash"}}</button>
+</div>
+{{end}}

@@ -36,12 +36,21 @@
       {{if .SelectedPantry}}<span>Checked against <strong>{{.SelectedPantry.Name}}</strong></span>{{end}}
     </div>
 
-    {{if .Pantries}}
-    <button type="button" class="wfd-btn wfd-btn--primary" onclick="document.getElementById('cook-dialog').showModal()">
-      {{template "icon-bolt"}}
-      <span>Cook this recipe</span>
-    </button>
+    <div class="wfd-toolbar__row">
+      <a class="wfd-btn wfd-btn--ghost" href="/recipes/{{.Recipe.ID}}/edit">
+        {{template "icon-pencil"}}
+        <span>Edit recipe</span>
+      </a>
 
+      {{if .Pantries}}
+      <button type="button" class="wfd-btn wfd-btn--primary" onclick="document.getElementById('cook-dialog').showModal()">
+        {{template "icon-bolt"}}
+        <span>Cook this recipe</span>
+      </button>
+      {{end}}
+    </div>
+
+    {{if .Pantries}}
     {{/* --- Cook dialog ---------------------------------------------------
 
          A native <dialog>, opened via the plain onclick above (no shared

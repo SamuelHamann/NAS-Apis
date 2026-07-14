@@ -184,7 +184,8 @@ whatsfordinner/
 │   │       ├── tags.go
 │   │       ├── pantry.go
 │   │       ├── scan_receipt.go  # GET/POST /scan-receipt handlers
-│   │       └── scan_receipt_queue_view.go # Pure status->tone/sort logic for the Queue tab
+│   │       ├── scan_receipt_queue_view.go # Pure status->tone/sort logic for the Queue tab
+│   │       └── admin_page.go    # GET /settings/admin + pantry create/access-matrix handlers
 │   ├── templates/           # Go html/template pages + shared partials
 │   │   ├── styles.html      # {{define "styles"}} - design tokens + all CSS
 │   │   ├── icons.html       # {{define "icon-*"}} - shared inline SVG icons
@@ -199,7 +200,8 @@ whatsfordinner/
 │   │                        #   (+ ingredient_item/ingredient_form and
 │   │                        #   combined_ingredient_item/combined_ingredient_form/
 │   │                        #   combined_ingredient_item_row partials)
-│   │   └── scan_receipt.html # GET/POST /scan-receipt
+│   │   ├── scan_receipt.html # GET/POST /scan-receipt
+│   │   └── admin.html       # GET /settings/admin
 │   ├── Dockerfile           # 2-stage build: Go -> distroless
 │   ├── Makefile             # Common dev commands (run, build, test, ...)
 │   ├── go.mod
@@ -314,10 +316,13 @@ Structs live in `internal/models`. Nullable columns are pointers and serialize t
   `updated_at`.
 - **Pantry** (`pantry`, bigint id) — `name` (required), `created_at`,
   `updated_at`. A container for pantry ingredients ("Main kitchen", "Garage
-  freezer", ...). Users are linked to the pantries they can see through the
-  `user_pantry` join table — the `/pantry` page's picker shows only those
-  memberships when signed in, falling back to every pantry when either no
-  one is signed in or the user has zero memberships yet (bootstrap).
+  freezer", ...), created/renamed from the
+  [Admin page](#admin-page-get-settingsadmin) (no delete yet). Users are
+  linked to the pantries they can see
+  through the `user_pantry` join table, also managed from the Admin page's
+  access matrix — the `/pantry` page's picker shows only those memberships
+  when signed in, falling back to every pantry when either no one is signed
+  in or the user has zero memberships yet (bootstrap).
 
   **The `pantry` and `user_pantry` tables and the `pantry_id` /
   `expiration_date` columns on `pantry_ingredients` are not yet part of the
@@ -470,6 +475,10 @@ when no one is signed in.
 | POST   | `/combined-ingredients/{id}/delete` | Delete a combined ingredient (its items cascade) (form)  |
 | GET    | `/scan-receipt`        | Scan receipt page: photo-upload form (mobile-only entry point on the home page) |
 | POST   | `/scan-receipt`        | Send the photo to Gemini and render what it read back directly (form; not a redirect — see below) |
+| GET    | `/settings/admin`      | Admin page: create/rename pantries + a user x pantry access matrix (see below) |
+| POST   | `/settings/admin/pantries` | Create a pantry — form field: `name`                          |
+| POST   | `/settings/admin/pantries/{id}/update` | Rename a pantry — form field: `name`               |
+| POST   | `/settings/admin/pantry-access` | Replace the whole `user_pantry` access matrix in one submission — repeated `access` fields, each `"<user_id>:<pantry_id>"` |
 
 There's no password: the users table is just "who is using this household
 device right now". `/login` doubles as both the sign-in picker and the user
@@ -839,6 +848,32 @@ request per item and no retries means the worker's actual request rate never
 exceeds `WFD_QUEUE_WORKER_BATCH_SIZE` per `WFD_QUEUE_WORKER_INTERVAL`, so
 tightening either setting is a straightforward way to trade throughput
 against that margin.
+
+### Admin page (`GET /settings/admin`)
+
+Linked from the navbar's settings menu (**Admin page**, next to **Change
+user** — see `navbar.html`). Two things live here (`admin_page.go`,
+`templates/admin.html`):
+
+- **Create/rename a pantry** — a "+ Create pantry" form (`POST
+  /settings/admin/pantries`, form field `name`), plus a pencil-icon inline
+  edit form per row (`POST /settings/admin/pantries/{id}/update`, same
+  nesting-safe `<details>` pattern as the rename form on `/login`). There's
+  no delete for pantries yet.
+- **Pantry access matrix** — a `users` x `pantry` checkbox grid controlling
+  who can see which pantry via the `user_pantry` join table (the same table
+  that scopes the pantry picker on the [Pantry page](#pantry-page-get-pantry)
+  to a signed-in user's memberships). Unlike the tag filters elsewhere in
+  this app (which submit as soon as one checkbox changes), this matrix has
+  its own **Save access** button: the whole grid is submitted as one `POST
+  /settings/admin/pantry-access`, and `SetUserPantryAccess`
+  (`internal/store/pantries.go`) replaces every `user_pantry` row in a
+  single transaction rather than diffing individual cells. Each checked cell
+  is one `access` form value shaped `"<user_id>:<pantry_id>"`.
+
+  If there are no users or no pantries yet, the matrix is replaced with a
+  short message pointing at what to create first — there's nothing
+  meaningful to grant access to otherwise.
 
 ### Live search
 

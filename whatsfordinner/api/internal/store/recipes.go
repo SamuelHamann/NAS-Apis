@@ -19,6 +19,25 @@ type RecipeInput struct {
 	CookTimeMinutes *int32
 }
 
+// RecipeIngredientInput holds the writable fields of one recipe_ingredients
+// row, as submitted from the recipe form.
+type RecipeIngredientInput struct {
+	IngredientID int64
+	Quantity     *float64
+	UnitID       *int64
+	Note         *string
+}
+
+// RecipeWithRelationsInput bundles a recipe's own fields with its full
+// ingredient list and tag set — both replaced wholesale on every save (see
+// setRecipeIngredients/setRecipeTags), the same "submit the full desired
+// state" approach as the ingredients page's tag editing.
+type RecipeWithRelationsInput struct {
+	RecipeInput
+	Ingredients []RecipeIngredientInput
+	TagIDs      []int64
+}
+
 const recipeColumns = `id, name, description, instructions, source_url,
 	servings, prep_time_minutes, cook_time_minutes, created_at, updated_at`
 
@@ -205,6 +224,118 @@ func (s *Store) DeleteRecipe(ctx context.Context, id int64) error {
 	return nil
 }
 
+// CreateRecipeWithRelations inserts a new recipe and attaches its ingredient
+// list and tags, all in a single transaction.
+func (s *Store) CreateRecipeWithRelations(ctx context.Context, in RecipeWithRelationsInput) (models.Recipe, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return models.Recipe{}, mapError(err)
+	}
+	defer tx.Rollback(ctx)
+
+	rows, err := tx.Query(ctx, `
+		INSERT INTO recipes
+			(name, description, instructions, source_url, servings, prep_time_minutes, cook_time_minutes)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING `+recipeColumns,
+		in.Name, in.Description, in.Instructions, in.SourceURL,
+		in.Servings, in.PrepTimeMinutes, in.CookTimeMinutes)
+	if err != nil {
+		return models.Recipe{}, mapError(err)
+	}
+	recipe, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[models.Recipe])
+	if err != nil {
+		return models.Recipe{}, mapError(err)
+	}
+
+	if err := setRecipeIngredients(ctx, tx, recipe.ID, in.Ingredients); err != nil {
+		return models.Recipe{}, err
+	}
+	if err := setRecipeTags(ctx, tx, recipe.ID, in.TagIDs); err != nil {
+		return models.Recipe{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return models.Recipe{}, mapError(err)
+	}
+	return recipe, nil
+}
+
+// UpdateRecipeWithRelations overwrites an existing recipe and replaces its
+// ingredient list and tags, all in a single transaction.
+func (s *Store) UpdateRecipeWithRelations(ctx context.Context, id int64, in RecipeWithRelationsInput) (models.Recipe, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return models.Recipe{}, mapError(err)
+	}
+	defer tx.Rollback(ctx)
+
+	rows, err := tx.Query(ctx, `
+		UPDATE recipes
+		SET name = $2, description = $3, instructions = $4, source_url = $5,
+		    servings = $6, prep_time_minutes = $7, cook_time_minutes = $8,
+		    updated_at = now()
+		WHERE id = $1
+		RETURNING `+recipeColumns,
+		id, in.Name, in.Description, in.Instructions, in.SourceURL,
+		in.Servings, in.PrepTimeMinutes, in.CookTimeMinutes)
+	if err != nil {
+		return models.Recipe{}, mapError(err)
+	}
+	recipe, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[models.Recipe])
+	if err != nil {
+		return models.Recipe{}, mapError(err)
+	}
+
+	if err := setRecipeIngredients(ctx, tx, id, in.Ingredients); err != nil {
+		return models.Recipe{}, err
+	}
+	if err := setRecipeTags(ctx, tx, id, in.TagIDs); err != nil {
+		return models.Recipe{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return models.Recipe{}, mapError(err)
+	}
+	return recipe, nil
+}
+
+// setRecipeIngredients replaces every recipe_ingredients row for recipeID
+// with items. Called within a transaction from Create/UpdateRecipeWithRelations.
+// Callers must ensure items contains no duplicate IngredientID (the
+// junction's primary key is (recipe_id, ingredient_id)) — see
+// parseRecipeForm, which rejects duplicates before this is reached.
+func setRecipeIngredients(ctx context.Context, tx pgx.Tx, recipeID int64, items []RecipeIngredientInput) error {
+	if _, err := tx.Exec(ctx, `DELETE FROM recipe_ingredients WHERE recipe_id = $1`, recipeID); err != nil {
+		return mapError(err)
+	}
+	for _, item := range items {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit_id, note)
+			VALUES ($1, $2, $3, $4, $5)`, recipeID, item.IngredientID, item.Quantity, item.UnitID, item.Note); err != nil {
+			return mapError(err)
+		}
+	}
+	return nil
+}
+
+// setRecipeTags replaces every recipe_tags row for recipeID with tagIDs.
+// Called within a transaction from Create/UpdateRecipeWithRelations.
+func setRecipeTags(ctx context.Context, tx pgx.Tx, recipeID int64, tagIDs []int64) error {
+	if _, err := tx.Exec(ctx, `DELETE FROM recipe_tags WHERE recipe_id = $1`, recipeID); err != nil {
+		return mapError(err)
+	}
+	for _, tagID := range tagIDs {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO recipe_tags (recipe_id, tag_id)
+			VALUES ($1, $2)
+			ON CONFLICT DO NOTHING`, recipeID, tagID); err != nil {
+			return mapError(err)
+		}
+	}
+	return nil
+}
+
 // CookableFilter holds the optional constraints for ListCookableRecipes.
 type CookableFilter struct {
 	// TagIDs, if non-empty, restricts results to recipes that carry ALL of
@@ -362,4 +493,65 @@ func (s *Store) ListRecipeTagNames(ctx context.Context, recipeID int64) ([]strin
 		return nil, mapError(err)
 	}
 	return names, nil
+}
+
+// ListRecipeTagIDs returns the IDs of every tag attached to a recipe. Used
+// by the recipe form (GET /recipes/{id}/edit) to pre-check the tag chips —
+// ListRecipeTagNames (names only) is enough for the read-only detail page.
+func (s *Store) ListRecipeTagIDs(ctx context.Context, recipeID int64) ([]int64, error) {
+	rows, err := s.pool.Query(ctx, `SELECT tag_id FROM recipe_tags WHERE recipe_id = $1`, recipeID)
+	if err != nil {
+		return nil, mapError(err)
+	}
+
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return ids, nil
+}
+
+// RecipeIngredientEditRow is one row of a recipe's ingredient list as needed
+// by the recipe form (GET /recipes/{id}/edit) — unlike
+// RecipeIngredientDetailRow, this carries UnitID (to pre-select the row's
+// unit dropdown) and has no pantry/Missing concept, since the form isn't
+// checked against any particular pantry.
+type RecipeIngredientEditRow struct {
+	IngredientID   int64    `db:"ingredient_id"`
+	IngredientName string   `db:"ingredient_name"`
+	Quantity       *float64 `db:"quantity"`
+	UnitID         *int64   `db:"unit_id"`
+	UnitName       *string  `db:"unit_name"`
+	Note           *string  `db:"note"`
+}
+
+// ListRecipeIngredientsForEdit returns every ingredient a recipe calls for,
+// joined with the ingredient/unit names, ordered alphabetically by
+// ingredient name (the same order autocomplete/tab-through would expect,
+// matching ListRecipeIngredients — though this recipe form has no
+// missing-first reordering, since there's no pantry context here).
+func (s *Store) ListRecipeIngredientsForEdit(ctx context.Context, recipeID int64) ([]RecipeIngredientEditRow, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT
+		    ri.ingredient_id AS ingredient_id,
+		    i.name           AS ingredient_name,
+		    ri.quantity      AS quantity,
+		    ri.unit_id       AS unit_id,
+		    u.name           AS unit_name,
+		    ri.note          AS note
+		FROM   recipe_ingredients ri
+		JOIN   ingredients i ON i.id = ri.ingredient_id
+		LEFT JOIN units u    ON u.id = ri.unit_id
+		WHERE  ri.recipe_id = $1
+		ORDER  BY i.name`,
+		recipeID)
+	if err != nil {
+		return nil, mapError(err)
+	}
+
+	items, err := pgx.CollectRows(rows, pgx.RowToStructByName[RecipeIngredientEditRow])
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return items, nil
 }

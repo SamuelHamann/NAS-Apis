@@ -133,6 +133,32 @@ func (h *Handler) IngredientsCreate(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, ingredientsRedirectURL(r, ""), http.StatusSeeOther)
 }
 
+// IngredientsQuickCreate handles POST /ingredients/quick-create: creates an
+// ingredient (with its tags) from the recipe form's inline ingredient
+// picker (see templates/scripts.html's "ingredient-picker-script") and
+// returns it as JSON instead of redirecting, so the picker can select the
+// new ingredient immediately without a page reload.
+func (h *Handler) IngredientsQuickCreate(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid form submission")
+		return
+	}
+
+	in, msg := parseIngredientForm(r.Form)
+	if msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+
+	ingredient, err := h.store.CreateIngredientWithTags(r.Context(), in)
+	if err != nil {
+		h.respondStoreError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, ingredient)
+}
+
 // IngredientsUpdate handles POST /ingredients/{id}/update.
 func (h *Handler) IngredientsUpdate(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseInt64PathHTML(r, "id")
