@@ -51,7 +51,7 @@
           {{range .Result.Items}}
           <li class="wfd-ingredient-item">
             <span class="wfd-ingredient-item__name">{{.Name}}</span>
-            {{if .Quantity}}<span class="wfd-ingredient-item__qty">Qty {{deref .Quantity}}</span>{{end}}
+            {{if .Quantity}}<span class="wfd-ingredient-item__qty">Qty {{deref .Quantity}} {{deref .Unit}}</span>{{end}}
             {{if .Price}}<span class="wfd-ingredient-item__qty">${{deref .Price}}</span>{{end}}
             {{if .Code}}<span class="wfd-ingredient-item__note">Code: {{deref .Code}}</span>{{end}}
             {{if .UPC}}<span class="wfd-ingredient-item__note">UPC: {{deref .UPC}}</span>{{end}}

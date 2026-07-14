@@ -34,7 +34,11 @@ type ReceiptScanResult struct {
 type ReceiptItem struct {
 	Name     string   `json:"name"`
 	Quantity *float64 `json:"quantity"`
-	Price    *float64 `json:"price"`
+	// Unit is the quantity's unit of measurement (e.g. "kg", "lb", "L") as
+	// printed or implied on the receipt — not matched against our own units
+	// table. Defaulted to "unit" after decoding if Gemini didn't return one.
+	Unit  *string  `json:"unit"`
+	Price *float64 `json:"price"`
 	// Code is whatever product code/SKU is printed on the receipt itself —
 	// not matched against our own ingredients table.
 	Code *string `json:"code"`
@@ -64,6 +68,7 @@ var receiptSchema = &gemini.Schema{
 				Properties: map[string]*gemini.Schema{
 					"name":     {Type: "STRING"},
 					"quantity": {Type: "NUMBER", Nullable: true},
+					"unit":     {Type: "STRING", Nullable: true},
 					"price":    {Type: "NUMBER", Nullable: true},
 					"code":     {Type: "STRING", Nullable: true},
 				},
@@ -89,6 +94,11 @@ var receiptSchema = &gemini.Schema{
 // maxReceiptPhotoBytes caps the upload generously for a phone photo while
 // keeping the request small enough to send to Gemini inline (no Files API).
 const maxReceiptPhotoBytes = 10 << 20 // 10 MiB
+
+// defaultReceiptUnit is used for an item's Unit when Gemini doesn't return
+// one — e.g. the receipt just counts individual items rather than weighing
+// or measuring them.
+const defaultReceiptUnit = "unit"
 
 // upcDigits is how many digits a UPC-A code has before its trailing check
 // digit — receipts print the bare 11 digits (or fewer, missing leading
@@ -136,7 +146,9 @@ func upcCheckDigit(elevenDigits string) int {
 // it still needs spelling out here.
 const receiptPrompt = `This image is a photo of a grocery store receipt. ` +
 	`Extract every item that was purchased: its name, the quantity bought ` +
-	`(if shown), the price paid (if shown), and any product code/SKU ` +
+	`(if shown), the unit that quantity is measured in (e.g. "kg", "g", ` +
+	`"lb", "L", "mL" — if the receipt just counts individual items, use ` +
+	`"unit"), the price paid (if shown), and any product code/SKU ` +
 	`printed next to it on the receipt (if shown). ` +
 	`Ignore can/bottle deposit lines entirely (e.g. "consigne", "deposit", ` +
 	`"CRV") — do not list them as a purchased item. ` +
@@ -208,6 +220,10 @@ func (h *Handler) ScanReceiptSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for i, item := range result.Items {
+		if item.Unit == nil || strings.TrimSpace(*item.Unit) == "" {
+			defaultUnit := defaultReceiptUnit
+			result.Items[i].Unit = &defaultUnit
+		}
 		if item.Code == nil {
 			continue
 		}
