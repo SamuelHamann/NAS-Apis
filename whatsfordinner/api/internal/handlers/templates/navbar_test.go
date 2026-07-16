@@ -83,21 +83,22 @@ func activeLinkClassFor(body, href string) int {
 	return count
 }
 
-// TestNavbarNoActiveLinkOnHome renders the home page (whose PageData never
-// sets ActiveNav) and checks that none of the three nav links are
-// highlighted — a page not in {pantry, recipes, ingredients} should never
-// accidentally match the zero-value "".
+// TestNavbarNoActiveLinkOnHome renders the login page (whose PageData never
+// sets ActiveNav — it isn't one of the nav's own destinations) and checks
+// that none of the nav links are highlighted, i.e. a page not in {pantry,
+// recipes, ingredients, scan-receipt} should never accidentally match the
+// zero-value "".
 func TestNavbarNoActiveLinkOnHome(t *testing.T) {
-	ts, ok := parseTestTemplates(t)["home.html"]
+	ts, ok := parseTestTemplates(t)["login.html"]
 	if !ok {
-		t.Fatal(`template "home.html" not found`)
+		t.Fatal(`template "login.html" not found`)
 	}
 
-	data := HomeData{PageData: PageData{Title: "Home", SignedIn: true, CurrentUser: "Alice"}}
+	data := LoginData{PageData: PageData{Title: "Sign in", SignedIn: true, CurrentUser: "Alice"}}
 
 	var buf bytes.Buffer
 	if err := ts.Execute(&buf, data); err != nil {
-		t.Fatalf("execute home.html: %v", err)
+		t.Fatalf("execute login.html: %v", err)
 	}
 	body := buf.String()
 
@@ -106,7 +107,7 @@ func TestNavbarNoActiveLinkOnHome(t *testing.T) {
 	// class attribute a highlighted link would actually render instead of
 	// the bare class-name substring.
 	if strings.Contains(body, `class="wfd-nav-link wfd-nav-link--active"`) {
-		t.Errorf("expected no nav link to be highlighted on the home page, got:\n%s", body)
+		t.Errorf("expected no nav link to be highlighted on the login page, got:\n%s", body)
 	}
 }
 
@@ -115,16 +116,16 @@ func TestNavbarNoActiveLinkOnHome(t *testing.T) {
 // same destinations as the inline nav, so it works even before the CSS
 // breakpoint that actually reveals it on narrow viewports.
 func TestNavbarRendersMobileBurgerMenu(t *testing.T) {
-	ts, ok := parseTestTemplates(t)["home.html"]
+	ts, ok := parseTestTemplates(t)["login.html"]
 	if !ok {
-		t.Fatal(`template "home.html" not found`)
+		t.Fatal(`template "login.html" not found`)
 	}
 
-	data := HomeData{PageData: PageData{Title: "Home"}}
+	data := LoginData{PageData: PageData{Title: "Sign in"}}
 
 	var buf bytes.Buffer
 	if err := ts.Execute(&buf, data); err != nil {
-		t.Fatalf("execute home.html: %v", err)
+		t.Fatalf("execute login.html: %v", err)
 	}
 	body := buf.String()
 
@@ -140,9 +141,7 @@ func TestNavbarRendersMobileBurgerMenu(t *testing.T) {
 	}
 
 	// Each destination must appear twice: once in the always-in-the-DOM
-	// inline nav, once inside the burger dropdown. Match on the nav-link
-	// class + href together (not a bare href) since the home page's
-	// dashboard tiles *also* link to /pantry, /recipes and /scan-receipt.
+	// inline nav, once inside the burger dropdown.
 	for _, href := range []string{`href="/pantry"`, `href="/recipes"`, `href="/ingredients"`, `href="/scan-receipt"`} {
 		want := `class="wfd-nav-link" ` + href
 		if got := strings.Count(body, want); got != 2 {

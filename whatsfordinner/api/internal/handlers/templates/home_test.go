@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 )
 
@@ -30,7 +29,10 @@ func parseTestTemplates(t *testing.T) map[string]*template.Template {
 	return cache
 }
 
-func TestHomeRendersSuccessfully(t *testing.T) {
+// TestHomeRedirectsToPantry checks that "/" and "/home" (both routed to
+// Home, see server.go) redirect to /pantry — the app's actual landing page
+// now that the tile dashboard is gone.
+func TestHomeRedirectsToPantry(t *testing.T) {
 	h := New(nil, slog.New(slog.NewTextHandler(io.Discard, nil)), parseTestTemplates(t), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -38,58 +40,10 @@ func TestHomeRendersSuccessfully(t *testing.T) {
 
 	h.Home(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected status %d, got %d", http.StatusSeeOther, rec.Code)
 	}
-
-	body := rec.Body.String()
-	for _, want := range []string{
-		"What's for Dinner", // navbar brand
-		"Sign in",           // signed-out navbar CTA (no cookie set on this request)
-		"Recipes",
-		"Pantry",
-		"Scan receipt",
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("expected rendered home page to contain %q, got:\n%s", want, body)
-		}
-	}
-
-	if strings.Contains(body, `class="wfd-user"`) {
-		t.Errorf("expected signed-out home page not to render the navbar username span, got:\n%s", body)
-	}
-	if strings.Contains(body, `id="settings-menu"`) {
-		t.Errorf("expected signed-out home page not to render the settings dropdown, got:\n%s", body)
-	}
-}
-
-// TestHomeTemplateRendersSignedInState executes templates/home.html directly
-// (bypassing the Home handler, which needs a live database to resolve the
-// session cookie) to check the signed-in branch of the navbar and greeting.
-func TestHomeTemplateRendersSignedInState(t *testing.T) {
-	ts, ok := parseTestTemplates(t)["home.html"]
-	if !ok {
-		t.Fatal(`template "home.html" not found`)
-	}
-
-	data := HomeData{PageData: PageData{Title: "Home", SignedIn: true, CurrentUser: "Alice"}}
-
-	rec := httptest.NewRecorder()
-	if err := ts.Execute(rec, data); err != nil {
-		t.Fatalf("execute home.html: %v", err)
-	}
-
-	body := rec.Body.String()
-	for _, want := range []string{
-		"Hey Alice 👋",
-		`class="wfd-user"`,
-		`id="settings-menu"`, // navbar's own settings dropdown, unrelated to the (now-removed) home page tile
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("expected rendered home page to contain %q, got:\n%s", want, body)
-		}
-	}
-	if strings.Contains(body, ">Sign in<") {
-		t.Errorf("expected signed-in home page not to render the Sign in button, got:\n%s", body)
+	if got := rec.Header().Get("Location"); got != "/pantry" {
+		t.Errorf("expected redirect to /pantry, got %q", got)
 	}
 }

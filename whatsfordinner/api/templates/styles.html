@@ -345,61 +345,6 @@
   .wfd-page-title { font-size: 1.6rem; font-weight: 700; }
   .wfd-page-subtitle { color: var(--wfd-text-muted); margin-bottom: 1.75rem; }
 
-  /* --- Dashboard tiles (home page and, later, other quick-action grids) --- */
-  .wfd-tiles {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 1rem;
-  }
-
-  .wfd-tile {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.65rem;
-    min-height: 130px;
-    padding: 1.5rem 1rem;
-    background: var(--wfd-surface);
-    border: 1px solid var(--wfd-border);
-    border-radius: var(--wfd-radius-lg);
-    box-shadow: var(--wfd-shadow);
-    text-align: center;
-    font-weight: 600;
-    -webkit-tap-highlight-color: transparent;
-    transition: transform 0.15s ease, background-color 0.15s ease;
-  }
-  .wfd-tile:hover, .wfd-tile:focus-visible {
-    background: var(--wfd-surface-alt);
-    transform: translateY(-2px);
-    outline: none;
-  }
-  .wfd-tile:active { transform: translateY(0); }
-
-  .wfd-tile__icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 54px;
-    height: 54px;
-    border-radius: 999px;
-    background: var(--wfd-primary-soft);
-    color: var(--wfd-primary);
-  }
-  .wfd-tile__icon svg { width: 26px; height: 26px; }
-
-  .wfd-tile--accent .wfd-tile__icon {
-    background: var(--wfd-accent-soft);
-    color: var(--wfd-accent);
-  }
-
-  .wfd-tile__label { font-size: 0.95rem; }
-  .wfd-tile__hint {
-    font-weight: 400;
-    font-size: 0.78rem;
-    color: var(--wfd-text-muted);
-  }
-
   /* --- Buttons (sign in, create user, save, ...) --- */
   .wfd-btn {
     display: inline-flex;
@@ -1320,7 +1265,6 @@
 
   @media (max-width: 420px) {
     .wfd-user { max-width: 32vw; }
-    .wfd-tiles { grid-template-columns: repeat(2, 1fr); }
   }
 </style>
 {{end}}

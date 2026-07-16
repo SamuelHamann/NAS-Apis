@@ -7,7 +7,7 @@ import "net/http"
 // models should embed PageData so `{{template "navbar" .}}` always has what
 // it expects, e.g.:
 //
-//	type HomeData struct {
+//	type SomePageData struct {
 //		PageData
 //		Foo string
 //	}
@@ -24,7 +24,7 @@ type PageData struct {
 	// ActiveNav marks which navbar link (see templates/navbar.html) should
 	// be highlighted as "current page": "pantry", "recipes",
 	// "ingredients" or "scan-receipt". Empty means none of them are
-	// highlighted (e.g. the home page or /login, which aren't in the nav).
+	// highlighted (e.g. /login, which isn't in the nav).
 	ActiveNav string
 }
 

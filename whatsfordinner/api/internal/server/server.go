@@ -118,9 +118,8 @@ func (s *Server) Routes() http.Handler {
 
 	// mux.Handle("/", s.requireAPIKey(api))
 
-	// Home page: shared navbar + dashboard of quick-access tiles. Registered
-	// at both "/" and "/home" while the rest of the site is being migrated
-	// off JSON responses onto server-rendered templates.
+	// "/" and "/home" just redirect to /pantry, the app's actual landing
+	// page — see home.go.
 	mux.HandleFunc("GET /{$}", h.Home)
 	mux.HandleFunc("GET /home", h.Home)
 

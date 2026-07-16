@@ -21,7 +21,7 @@ ingredients with their own quantity/unit each (`combined_ingredients` /
 `combined_ingredient_items`). The `recipe_ingredients`/`recipe_tags` relationship
 tables are modelled but their endpoints are deferred to a later iteration.
 
-The UI (home page, sign-in, recipes/pantry/ingredients/scan-receipt pages) is
+The UI (sign-in, recipes/pantry/ingredients/scan-receipt pages) is
 server-rendered HTML — Go's `html/template` reading from
 [`api/templates`](./api/templates) — served from the same origin and process
 as the API, so the deployed stack is a single container with no separate
@@ -169,7 +169,7 @@ whatsfordinner/
 │   │       ├── response.go  # JSON + error helpers, store-error -> HTTP mapping (legacy JSON routes)
 │   │       ├── params.go    # Path/query parsing helpers, shared request types
 │   │       ├── page_data.go # PageData shared by every full-page template (navbar state)
-│   │       ├── home.go      # GET / and /home
+│   │       ├── home.go      # GET / and /home (redirect to /pantry)
 │   │       ├── users.go     # /login + /users/... (sign-in, CRUD on users)
 │   │       ├── session.go   # "Signed in" cookie helpers (no password)
 │   │       ├── flash.go     # redirect-with-?error= helper for HTML forms
@@ -197,7 +197,6 @@ whatsfordinner/
 │   │   ├── icons.html       # {{define "icon-*"}} - shared inline SVG icons
 │   │   ├── scripts.html     # {{define "search-script"/"tabs-script"/"item-rows-script"}} - shared vanilla JS
 │   │   ├── navbar.html      # {{define "navbar"}} - shared top nav (+ Pantry/Recipes/Ingredients links)
-│   │   ├── home.html        # GET / and /home
 │   │   ├── login.html       # GET /login
 │   │   ├── recipes.html     # GET /recipes (+ recipe_item partial)
 │   │   ├── recipe_detail.html # GET /recipes/{id}
@@ -238,7 +237,7 @@ whatsfordinner/
 - **`internal/server`** — Owns the `http.ServeMux` and middleware. **All routes are
   registered in `server.go` → `Routes()`.**
 - **`api/templates`** — Full-page `html/template` files (named after the page,
-  e.g. `home.html`) plus shared partials defined with `{{define "name"}}` and
+  e.g. `pantry.html`) plus shared partials defined with `{{define "name"}}` and
   pulled in via `{{template "name" .}}` (`styles`, `navbar`, `icon-*`). See
   [UI pages](#ui-pages).
 - **`internal/handlers`** — Thin HTTP layer: decode/validate input, call the store,
@@ -549,7 +548,7 @@ when no one is signed in.
 
 | Method | Path                  | Description                                                    |
 | ------ | --------------------- | ---------------------------------------------------------------- |
-| GET    | `/`, `/home`           | Home page: dashboard of quick-access tiles                       |
+| GET    | `/`, `/home`           | Redirects to `/pantry`, the app's landing page                   |
 | GET    | `/login`               | Lists every user (pick one to sign in) + rename/delete/create UI |
 | POST   | `/users`               | Create a user — form field: `username`                           |
 | POST   | `/users/{id}/update`   | Rename a user — form field: `username`                           |
@@ -574,7 +573,7 @@ when no one is signed in.
 | POST   | `/combined-ingredients`             | Add a combined ingredient, including its component items (form) |
 | POST   | `/combined-ingredients/{id}/update` | Edit a combined ingredient and replace its component items (form) |
 | POST   | `/combined-ingredients/{id}/delete` | Delete a combined ingredient (its items cascade) (form)  |
-| GET    | `/scan-receipt`        | Scan receipt page: photo-upload form (available on every platform, in the main nav/burger menu and a home page tile) |
+| GET    | `/scan-receipt`        | Scan receipt page: photo-upload form (available on every platform, in the main nav/burger menu) |
 | POST   | `/scan-receipt`        | Send the photo to Gemini and render what it read back directly (form; not a redirect — see below) |
 | GET    | `/settings/admin`      | Admin page: create/rename pantries + a user x pantry access matrix (see below) |
 | POST   | `/settings/admin/pantries` | Create a pantry — form field: `name`                          |
@@ -919,8 +918,7 @@ button. Validation (`parseCombinedIngredientForm` in
 ### Scan receipt (`GET`/`POST /scan-receipt`)
 
 Reachable from the main nav/burger menu (`navbar.html`, `ActiveNav ==
-"scan-receipt"`) and a "Scan receipt" tile on the home page, on every
-platform. A form with `<input type="file" accept="image/*"
+"scan-receipt"`), on every platform. A form with `<input type="file" accept="image/*"
 capture="environment">` opens the phone's camera directly on mobile; on a
 desktop browser (which doesn't support `capture`) it falls back to a plain
 file picker, so uploading an existing photo works there too — no

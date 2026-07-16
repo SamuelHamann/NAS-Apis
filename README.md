@@ -21,7 +21,7 @@ available while that migration is in progress.
 | Method(s) | Path(s)                           | Description                          |
 | --------- | --------------------------------- | ------------------------------------ |
 | GET       | `/health`, `/ready`               | Liveness and DB-readiness checks     |
-| GET       | `/`, `/home`                      | Home page (HTML)                     |
+| GET       | `/`, `/home`                      | Redirects to `/pantry`               |
 | GET       | `/login`                          | Sign-in / user picker page (HTML)    |
 | POST      | `/users`                          | Create a user (HTML form)            |
 | POST      | `/users/{id}/update`              | Rename a user (HTML form)            |
@@ -57,7 +57,7 @@ available while that migration is in progress.
 | POST      | `/collections/{id}/recipes/{recipeId}/toggle` | Add/remove a recipe from a collection (idempotent toggle, owner-only) |
 
 See [`whatsfordinner/README.md`](./whatsfordinner/README.md) for full details,
-request bodies and configuration. The UI (navbar, home page, sign-in) is
+request bodies and configuration. The UI (navbar, sign-in) is
 rendered server-side with Go's `html/template` and ships inside the API
 binary itself — no separate frontend build or container.
 
