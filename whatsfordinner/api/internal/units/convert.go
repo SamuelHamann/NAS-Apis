@@ -86,9 +86,13 @@ var unitDefs = map[string]unitDef{
 	"pounds": {KindMass, 453.592},
 }
 
-// normalize lowercases and trims a unit name for map lookup.
+// normalize lowercases a unit name and strips punctuation/extra whitespace
+// for map lookup, so freeform unit names typed by a user (units.name has no
+// controlled vocabulary — see internal/store/units.go) still match: "Tbsp.",
+// "fl. oz.", "  Cups " and "cups" all normalize to the same key.
 func normalize(name string) string {
-	return strings.ToLower(strings.TrimSpace(name))
+	name = strings.ToLower(strings.ReplaceAll(name, ".", ""))
+	return strings.Join(strings.Fields(name), " ")
 }
 
 // lookup resolves a unit name to its definition. Besides the exact names in

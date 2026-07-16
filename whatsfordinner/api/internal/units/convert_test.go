@@ -89,6 +89,26 @@ func TestConvertHandlesPluralsAndCase(t *testing.T) {
 	}
 }
 
+func TestConvertHandlesPunctuationAndWhitespace(t *testing.T) {
+	// Units are freeform user-typed strings (no controlled vocabulary — see
+	// internal/store/units.go), so "Tbsp.", "fl. oz." and extra whitespace
+	// need to normalize the same as their plain forms.
+	got, ok := Convert(3, "Tbsp.", "ml")
+	if !ok || !almostEqual(got, 44.3604) {
+		t.Errorf("Tbsp. -> ml: got (%v, %v), want (~44.3604, true)", got, ok)
+	}
+
+	got, ok = Convert(1, "fl. oz.", "ml")
+	if !ok || !almostEqual(got, 29.5735) {
+		t.Errorf("fl. oz. -> ml: got (%v, %v), want (~29.5735, true)", got, ok)
+	}
+
+	got, ok = Convert(2, "  Cups  ", "ml")
+	if !ok || !almostEqual(got, 473.176) {
+		t.Errorf("  Cups   -> ml: got (%v, %v), want (~473.176, true)", got, ok)
+	}
+}
+
 func TestConvertZeroQuantity(t *testing.T) {
 	got, ok := Convert(0, "cup", "ml")
 	if !ok || got != 0 {

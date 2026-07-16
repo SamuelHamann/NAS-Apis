@@ -108,8 +108,8 @@ func (s *Store) CookRecipe(ctx context.Context, in CookRecipeInput) (CookRecipeR
 		return CookRecipeResult{}, mapError(err)
 	}
 	stockByIngredient := make(map[int64]pantryStockRow, len(stock))
-	for _, s := range stock {
-		stockByIngredient[s.IngredientID] = s
+	for _, row := range stock {
+		stockByIngredient[row.IngredientID] = row
 	}
 
 	for _, ri := range ingredients {
