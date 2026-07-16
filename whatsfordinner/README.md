@@ -144,6 +144,7 @@ whatsfordinner/
 │   │   ├── config/          # Environment-based configuration + DSN building
 │   │   ├── database/        # pgx connection pool creation + ping
 │   │   ├── gemini/          # Minimal REST client for Gemini's generateContent (image + prompt -> text), used by /scan-receipt
+│   │   ├── units/           # units.Convert: metric/imperial quantity conversion, used by cook.go
 │   │   ├── models/          # Structs mapping to each DB table (json + db tags)
 │   │   ├── store/           # Data-access layer (CRUD), one file per resource
 │   │   │   ├── store.go     # Store type, sentinel errors, error mapping
@@ -713,7 +714,20 @@ browsers/contexts that don't support it.
 1. **Decrements the chosen pantry's stock** for every one of the recipe's
    ingredients by `quantity × multiplier`, **floored at zero** — it never
    goes negative, and an ingredient with no pantry stock (or no quantity
-   specified on the recipe) is simply left untouched.
+   specified on the recipe) is simply left untouched. The recipe's own unit
+   doesn't have to match the pantry row's unit: the amount is converted via
+   `internal/units` (`units.Convert`) into whatever unit the pantry stock is
+   tracked in first — so a recipe calling for "2 cups" of milk correctly
+   decrements a pantry row kept in liters. `units.Convert` covers metric and
+   (US) imperial/customary volume units (ml, L, tsp, tbsp, fl oz, cup, pint,
+   quart, gallon) and mass units (g, kg, oz, lb) — it deliberately refuses to
+   convert volume into mass or vice versa (that depends on an ingredient's
+   density, which it has no way to know) and refuses any unit it doesn't
+   recognize (e.g. "bunch", "clove"). Two equal unit names always succeed
+   trivially (no conversion needed) even if unrecognized. When conversion
+   isn't possible, the raw quantity is decremented as a best-effort
+   fallback, matching this app's behavior before unit-aware conversion
+   existed.
 2. **Records it as cooked** — upserts `past_cooked_recipes` for this recipe:
    `times_cooked + 1` (starting at 1) and `last_cooked_at = now()`.
 3. **Optionally saves the ingredients as a combined ingredient** (see
