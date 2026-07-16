@@ -220,7 +220,7 @@ func TestRecipesTemplateEmptyState(t *testing.T) {
 	}
 	body := buf.String()
 
-	if !strings.Contains(body, "No recipes match this tag filter") {
-		t.Error("expected tag-filter empty-state message when Cards is nil and tags are selected")
+	if !strings.Contains(body, "No recipes match this filter") {
+		t.Error("expected filter empty-state message when Cards is nil and tags are selected")
 	}
 }

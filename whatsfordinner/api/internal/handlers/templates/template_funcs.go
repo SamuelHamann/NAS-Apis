@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"html/template"
 	"reflect"
+	"sort"
+	"strconv"
+	"strings"
 )
 
 // TemplateFuncs returns the FuncMap shared by every html/template in the
@@ -23,11 +26,16 @@ import (
 //   - hasString []string s      report whether s appears in the slice.
 //     templates/ingredients.html uses this to pre-check a tag's checkbox
 //     when editing an ingredient (comparing against its []string TagNames).
+//   - mapKeysCSV map[int64]bool  render a map's keys as a sorted,
+//     comma-separated string (e.g. "1,3,7"). templates/recipes.html uses
+//     this to emit each recipe row's data-filter-collections attribute from
+//     its per-recipe membership map, for "checkbox-filter-script" to read.
 func TemplateFuncs() template.FuncMap {
 	return template.FuncMap{
-		"dict":      templateDict,
-		"deref":     templateDeref,
-		"hasString": templateHasString,
+		"dict":       templateDict,
+		"deref":      templateDeref,
+		"hasString":  templateHasString,
+		"mapKeysCSV": templateMapKeysCSV,
 	}
 }
 
@@ -70,4 +78,22 @@ func templateHasString(xs []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// templateMapKeysCSV renders m's keys (a recipe's collection-membership set,
+// typically) as a sorted, comma-separated string, e.g. "1,3,7", or "" for an
+// empty/nil map. Sorted so the output — and the DOM attribute using it — is
+// deterministic across renders.
+func templateMapKeysCSV(m map[int64]bool) string {
+	keys := make([]int64, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+
+	parts := make([]string, len(keys))
+	for i, k := range keys {
+		parts[i] = strconv.FormatInt(k, 10)
+	}
+	return strings.Join(parts, ",")
 }

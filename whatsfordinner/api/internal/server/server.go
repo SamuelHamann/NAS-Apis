@@ -133,6 +133,16 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /users/{id}/delete", h.DeleteUser)
 	mux.HandleFunc("POST /users/{id}/select", h.SelectUser)
 
+	// Profile page: the signed-in user's own collections (named lists of
+	// recipes), plus a "+ Create collection" form. See profile_page.go.
+	mux.HandleFunc("GET /settings/profile", h.ProfilePage)
+	mux.HandleFunc("POST /collections", h.CollectionsCreate)
+
+	// Add/remove a recipe from one of the signed-in user's collections —
+	// idempotent toggle, posted from a checkbox on the recipes list or a
+	// recipe's detail page. See collections.go.
+	mux.HandleFunc("POST /collections/{id}/recipes/{recipeId}/toggle", h.CollectionsToggleRecipe)
+
 	// Recipes page: every recipe grouped by how many of its ingredients
 	// are missing from the selected pantry (green = ready, orange = a few
 	// missing, default = further off), with alphabetical fallback and a

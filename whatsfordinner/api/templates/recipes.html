@@ -83,12 +83,59 @@
         </div>
       </div>
       {{end}}
+
+      {{/* Collection/creator filters are client-side only (see
+           "checkbox-filter-script" in scripts.html) — every recipe
+           matching the pantry+tag filters above is always rendered
+           server-side; checking one of these boxes just hides/shows rows
+           already on the page, no reload. Only the signed-in user's own
+           collections are offered — filtering by someone else's collection
+           wouldn't mean anything to them. */}}
+      {{if .UserCollections}}
+      <div class="wfd-toolbar__row">
+        <details class="wfd-dropdown">
+          <summary class="wfd-btn wfd-btn--ghost">
+            {{template "icon-filter"}}
+            <span>Collections</span>
+          </summary>
+          <div class="wfd-dropdown__panel" role="menu"
+               data-filter-group="collections" data-filter-scope="#recipes-cards" data-filter-empty="#recipes-filter-empty">
+            {{range .UserCollections}}
+            <label class="wfd-dropdown__option">
+              <input type="checkbox" data-filter-value="{{.ID}}" />
+              <span>{{.Name}}</span>
+            </label>
+            {{end}}
+          </div>
+        </details>
+      </div>
+      {{end}}
+
+      {{if .Authors}}
+      <div class="wfd-toolbar__row">
+        <details class="wfd-dropdown">
+          <summary class="wfd-btn wfd-btn--ghost">
+            {{template "icon-filter"}}
+            <span>Creator</span>
+          </summary>
+          <div class="wfd-dropdown__panel" role="menu"
+               data-filter-group="creator" data-filter-scope="#recipes-cards" data-filter-empty="#recipes-filter-empty">
+            {{range .Authors}}
+            <label class="wfd-dropdown__option">
+              <input type="checkbox" data-filter-value="{{.}}" />
+              <span>{{.}}</span>
+            </label>
+            {{end}}
+          </div>
+        </details>
+      </div>
+      {{end}}
     </div>
 
     {{/* --- Content --------------------------------------------------- */}}
     {{if not .Cards}}
       <p class="wfd-list-empty">
-        {{if .SelectedTagIDs}}No recipes match this tag filter.
+        {{if .SelectedTagIDs}}No recipes match this filter.
         {{else}}No recipes yet — add some to get started.{{end}}
       </p>
     {{else}}
@@ -106,10 +153,14 @@
         {{end}}
       </div>
       <p class="wfd-list-empty" id="recipes-search-empty" hidden>No recipes match your search.</p>
+      <p class="wfd-list-empty" id="recipes-filter-empty" hidden>No recipes match the selected collection/creator filters.</p>
     {{end}}
   </main>
 
   {{template "search-script" .}}
+  {{template "checkbox-filter-script" .}}
+  {{template "collection-toggle-script" .}}
+  {{template "dropdown-script" .}}
 </body>
 </html>
 
@@ -119,24 +170,38 @@
      card. Expects a dict with:
         Item              (RecipeItemView)
         RecipesPageData   (the outer .; used for the pantry context)
-   ----------------------------------------------------------------------- */}}
+
+     This is a <div> with a "stretched link" <a> overlay rather than being
+     an <a> itself, since it also hosts the "add to collection" widget (a
+     <details>/checkbox/form) — see .wfd-status-item--card-link in
+     styles.html for why. */}}
 {{define "recipe_item"}}
 {{ $item := .Item }}
 {{ $data := .RecipesPageData }}
-<a class="wfd-status-item wfd-status-item--link{{if eq (printf "%s" $item.Readiness) "ready"}} wfd-status-item--success{{else if eq (printf "%s" $item.Readiness) "nearly"}} wfd-status-item--warning{{end}}" href="/recipes/{{$item.ID}}" data-search-name="{{$item.Name}}">
+<div class="wfd-status-item wfd-status-item--card-link{{if eq (printf "%s" $item.Readiness) "ready"}} wfd-status-item--success{{else if eq (printf "%s" $item.Readiness) "nearly"}} wfd-status-item--warning{{end}}"
+     data-search-name="{{$item.Name}}"
+     data-filter-collections="{{mapKeysCSV (index $data.CollectionMembership $item.ID)}}"
+     data-filter-creator="{{if $item.AuthorUsername}}{{deref $item.AuthorUsername}}{{end}}">
+  <a class="wfd-status-item__stretched-link" href="/recipes/{{$item.ID}}" aria-label="{{$item.Name}}"></a>
+
   <div class="wfd-status-item__body">
     <div class="wfd-status-item__title">
       <span>{{$item.Name}}</span>
       {{if $data.SelectedPantry}}
         {{if eq (printf "%s" $item.Readiness) "ready"}}
+          <span>|</span>
           <span class="wfd-status-item__qty">Ready to cook</span>
         {{else}}
+          <span>|</span>
           <span class="wfd-status-item__qty">Missing <strong>{{$item.MissingCount}}</strong> ingredient{{if ne $item.MissingCount 1}}s{{end}}</span>
         {{end}}
       {{end}}
     </div>
 
     <div class="wfd-status-item__meta">
+      {{if $item.AuthorUsername}}
+        <span>By <strong>{{deref $item.AuthorUsername}}</strong></span>
+      {{end}}
       {{if $item.Description}}
         <span>{{$item.Description}}</span>
       {{end}}
@@ -159,5 +224,57 @@
     </div>
     {{end}}
   </div>
-</a>
+
+  {{if $data.UserCollections}}
+  <div class="wfd-pantry-item__actions">
+    {{template "collection_picker" (dict
+        "Collections" $data.UserCollections
+        "Membership" (index $data.CollectionMembership $item.ID)
+        "RecipeID" $item.ID
+        "RedirectTo" $data.CurrentURL)}}
+  </div>
+  {{end}}
+</div>
+{{end}}
+
+{{/* -----------------------------------------------------------------------
+     "Add to collection" widget: a bookmark-icon button (yellow once the
+     recipe is in at least one collection) that opens a checkbox list of
+     the signed-in user's collections. Each checkbox lives inside its own
+     tiny form (RedirectTo/action per collection), but isn't wired to
+     auto-submit that form — "collection-toggle-script" (scripts.html)
+     listens for the checkbox's own change event and POSTs to
+     /collections/{id}/recipes/{recipeId}/toggle via fetch() (idempotent:
+     adds if absent, removes if present) with no page reload, reverting the
+     checkbox if the request fails. This widget requires JavaScript (same
+     as the item-rows/ingredient-picker/tabs scripts elsewhere in this app);
+     RedirectTo/the <form> only matter if something ever needs a real
+     (non-fetch) submission target for this same markup. Shared by the
+     recipes list (this file) and the recipe detail page. Expects a dict
+     with:
+        Collections  ([]models.Collection — the signed-in user's own)
+        Membership   (map[int64]bool — collectionID -> already a member)
+        RecipeID     (int64)
+        RedirectTo   (string — the toggle form's post-submit redirect
+                      target, unused by the fetch path)
+   ----------------------------------------------------------------------- */}}
+{{define "collection_picker"}}
+{{ $collections := .Collections }}
+{{ $membership := .Membership }}
+{{ $recipeID := .RecipeID }}
+{{ $redirectTo := .RedirectTo }}
+<details class="wfd-dropdown">
+  <summary class="wfd-icon-btn{{if $membership}} wfd-icon-btn--bookmarked{{end}}" aria-label="Add to collection">{{template "icon-bookmark"}}</summary>
+  <div class="wfd-dropdown__panel" role="menu">
+    {{range $collections}}
+    <form method="post" action="/collections/{{.ID}}/recipes/{{$recipeID}}/toggle" data-collection-toggle-form>
+      <input type="hidden" name="redirect_to" value="{{$redirectTo}}" />
+      <label class="wfd-dropdown__option">
+        <input type="checkbox" data-collection-toggle-checkbox {{if index $membership .ID}}checked{{end}} />
+        <span>{{.Name}}</span>
+      </label>
+    </form>
+    {{end}}
+  </div>
+</details>
 {{end}}

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 
 	"github.com/jackc/pgx/v5"
 
@@ -36,6 +37,12 @@ type RecipeWithRelationsInput struct {
 	RecipeInput
 	Ingredients []RecipeIngredientInput
 	TagIDs      []int64
+	// AuthorUserID records who created this recipe (a user_recipes row),
+	// nil if nobody was signed in at creation time (the recipe then reads
+	// as unauthored "seed data", same as any pre-existing recipe). Only
+	// meaningful to CreateRecipeWithRelations — updating a recipe never
+	// changes who authored it.
+	AuthorUserID *int64
 }
 
 const recipeColumns = `id, name, description, instructions, source_url,
@@ -63,6 +70,12 @@ func (s *Store) ListRecipes(ctx context.Context, limit, offset int) ([]models.Re
 
 // RecipeStatusFilter narrows what ListRecipesWithStatus returns. Empty
 // slices / nil pointers mean "no filter on that dimension".
+//
+// There is deliberately no CollectionIDs dimension here: unlike tags,
+// collection (and creator) filtering on the recipes page is client-side
+// only — see "checkbox-filter-script" in scripts.html — since it only ever
+// narrows recipes already fetched for the signed-in user, with no need for
+// a round trip.
 type RecipeStatusFilter struct {
 	// TagIDs, if non-empty, restricts results to recipes that carry ALL of
 	// these tags — matching CookableFilter's semantics.
@@ -82,6 +95,9 @@ type RecipeStatusRow struct {
 
 	MissingCount int64    `db:"missing_count"`
 	TagNames     []string `db:"tag_names"`
+	// AuthorUsername is nil for a recipe with no user_recipes row (seed
+	// data / created before this feature existed).
+	AuthorUsername *string `db:"author_username"`
 }
 
 // ListRecipesWithStatus returns every recipe, each annotated with how many
@@ -108,7 +124,9 @@ func (s *Store) ListRecipesWithStatus(ctx context.Context, pantryID int64, f Rec
 	// used so recipes with no ingredients still return a row (with count 0).
 	//
 	// Tag names come from an ordered array_agg so the template can render
-	// them without a second query.
+	// them without a second query. author_username comes from a LEFT JOIN
+	// through user_recipes — NULL when the recipe has no row there (seed
+	// data, or created before this feature existed).
 	rows, err := s.pool.Query(ctx, `
 		SELECT
 		    r.id, r.name, r.description, r.instructions, r.source_url,
@@ -121,7 +139,8 @@ func (s *Store) ListRecipesWithStatus(ctx context.Context, pantryID int64, f Rec
 		         JOIN   tags t ON t.id = rt.tag_id
 		         WHERE  rt.recipe_id = r.id),
 		        ARRAY[]::text[]
-		    ) AS tag_names
+		    ) AS tag_names,
+		    author.username AS author_username
 		FROM   recipes r
 		LEFT JOIN LATERAL (
 		    SELECT COUNT(*) AS cnt
@@ -135,6 +154,8 @@ func (s *Store) ListRecipesWithStatus(ctx context.Context, pantryID int64, f Rec
 		                 AND  pi.quantity      > 0
 		           )
 		) missing ON true
+		LEFT JOIN user_recipes ur ON ur.recipe_id = r.id
+		LEFT JOIN users author    ON author.id = ur.user_id
 		WHERE
 		    -- Optional AND tag filter: recipe must carry every requested tag.
 		    ($2::bigint[] IS NULL OR (
@@ -168,6 +189,26 @@ func (s *Store) GetRecipe(ctx context.Context, id int64) (models.Recipe, error) 
 		return models.Recipe{}, mapError(err)
 	}
 	return recipe, nil
+}
+
+// GetRecipeAuthorUsername returns the username of whoever created recipeID
+// (via user_recipes), or nil if the recipe has no author on record (seed
+// data, or created before this feature existed). Used by the recipe detail
+// page's "by <username>" note.
+func (s *Store) GetRecipeAuthorUsername(ctx context.Context, recipeID int64) (*string, error) {
+	var username *string
+	err := s.pool.QueryRow(ctx, `
+		SELECT u.username
+		FROM   user_recipes ur
+		JOIN   users u ON u.id = ur.user_id
+		WHERE  ur.recipe_id = $1`, recipeID).Scan(&username)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, mapError(err)
+	}
+	return username, nil
 }
 
 // CreateRecipe inserts a new recipe and returns the stored row.
@@ -253,6 +294,13 @@ func (s *Store) CreateRecipeWithRelations(ctx context.Context, in RecipeWithRela
 	}
 	if err := setRecipeTags(ctx, tx, recipe.ID, in.TagIDs); err != nil {
 		return models.Recipe{}, err
+	}
+	if in.AuthorUserID != nil {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO user_recipes (recipe_id, user_id) VALUES ($1, $2)`,
+			recipe.ID, *in.AuthorUserID); err != nil {
+			return models.Recipe{}, mapError(err)
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {

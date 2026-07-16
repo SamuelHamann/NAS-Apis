@@ -156,6 +156,7 @@ whatsfordinner/
 │   │   │   ├── past_cooked.go
 │   │   │   ├── cook.go      # CookRecipe: the /recipes/{id}/cook transaction (pantry decrement + past_cooked upsert + optional combined-ingredient upsert)
 │   │   │   ├── pending_pantry_items.go # CRUD + claim/status-update for pending_pantry_items, used by /scan-receipt and internal/worker
+│   │   │   ├── collections.go # Collections + collection_recipes (add/remove a recipe from a collection)
 │   │   │   └── users.go
 │   │   ├── worker/          # Background jobs (not HTTP handlers)
 │   │   │   └── pending_pantry_items.go # Polls pending_pantry_items, resolves each by UPC against OpenFoodFacts
@@ -177,6 +178,7 @@ whatsfordinner/
 │   │       ├── recipe_detail_view.go  # Pure ingredient-ordering + instruction-parsing logic
 │   │       ├── recipe_detail_page.go  # GET /recipes/{id} handler
 │   │       ├── recipe_cook.go         # POST /recipes/{id}/cook handler
+│   │       ├── recipe_form_page.go    # GET/POST /recipes/new + /recipes/{id}/edit + /recipes/{id}/update
 │   │       ├── ingredients.go
 │   │       ├── ingredients_page.go    # GET /ingredients + CRUD handlers
 │   │       ├── combined_ingredients_page.go # CRUD for the /ingredients page's "Combined ingredients" tab (no own GET route)
@@ -185,7 +187,9 @@ whatsfordinner/
 │   │       ├── pantry.go
 │   │       ├── scan_receipt.go  # GET/POST /scan-receipt handlers
 │   │       ├── scan_receipt_queue_view.go # Pure status->tone/sort logic for the Queue tab
-│   │       └── admin_page.go    # GET /settings/admin + pantry create/access-matrix handlers
+│   │       ├── admin_page.go    # GET /settings/admin + pantry create/access-matrix handlers
+│   │       ├── profile_page.go  # GET /settings/profile handler
+│   │       └── collections.go   # POST /collections + /collections/{id}/recipes/{recipeId}/toggle handlers
 │   ├── templates/           # Go html/template pages + shared partials
 │   │   ├── styles.html      # {{define "styles"}} - design tokens + all CSS
 │   │   ├── icons.html       # {{define "icon-*"}} - shared inline SVG icons
@@ -201,7 +205,9 @@ whatsfordinner/
 │   │                        #   combined_ingredient_item/combined_ingredient_form/
 │   │                        #   combined_ingredient_item_row partials)
 │   │   ├── scan_receipt.html # GET/POST /scan-receipt
-│   │   └── admin.html       # GET /settings/admin
+│   │   ├── recipe_form.html # GET/POST /recipes/new + /recipes/{id}/edit (+ recipe_ingredient_row partial)
+│   │   ├── admin.html       # GET /settings/admin
+│   │   └── profile.html     # GET /settings/profile
 │   ├── Dockerfile           # 2-stage build: Go -> distroless
 │   ├── Makefile             # Common dev commands (run, build, test, ...)
 │   ├── go.mod
@@ -243,7 +249,15 @@ Structs live in `internal/models`. Nullable columns are pointers and serialize t
 
 - **Recipe** (`recipes`, bigint id) — `name` (required), `description`, `instructions`,
   `source_url`, `servings` (>0), `prep_time_minutes` (≥0), `cook_time_minutes` (≥0),
-  `created_at`, `updated_at`.
+  `created_at`, `updated_at`. Created and edited via the
+  [Recipe form](#recipe-form-getpost-recipesnew-getpost-recipesidedit)
+  (`GET`/`POST /recipes/new`, `GET /recipes/{id}/edit`, `POST
+  /recipes/{id}/update`), which also owns its ingredient list
+  (`recipe_ingredients`) and tags (`recipe_tags`) — both replaced wholesale
+  on every save (see `setRecipeIngredients`/`setRecipeTags` in
+  `internal/store/recipes.go`). A recipe created this way while a user is
+  signed in gets a **UserRecipe** row (below) recording who made it; recipes
+  with no such row are "seed data" (shown to everyone with no attribution).
 
   **`recipes.id` changed from UUID to bigint.** Every table with a `recipe_id`
   foreign key must be migrated to match, or joins against `recipes` fail with
@@ -408,7 +422,86 @@ Structs live in `internal/models`. Nullable columns are pointers and serialize t
       updated_at timestamptz NOT NULL DEFAULT now()
   );
   ```
-- **RecipeIngredient** / **RecipeTag** — junction tables, modelled only (endpoints deferred).
+- **RecipeIngredient** (`recipe_ingredients`) / **RecipeTag** (`recipe_tags`) —
+  junction tables. Full CRUD **is** implemented for both, but only as part of
+  the [Recipe form](#recipe-form-getpost-recipesnew-getpost-recipesidedit)
+  saving a recipe's full ingredient list/tag set at once (`setRecipeIngredients`/
+  `setRecipeTags` in `internal/store/recipes.go`) — like `RecipeIngredient`
+  itself, there's no standalone endpoint for adding/removing a single row.
+- **UserRecipe** (`user_recipes`, `recipe_id` PK) — marks a recipe as authored
+  by a user rather than seed data; `recipe_id` is the primary key (not part
+  of a composite key) since a recipe has exactly one author, so this is a
+  one-user-to-many-recipes relationship. `ON DELETE CASCADE` both ways:
+  deleting the recipe drops the authorship record, and deleting the user
+  drops authorship of their recipes (the recipes themselves are untouched,
+  they just become unauthored). Populated once, at recipe creation
+  (`RecipeCreate` in `recipe_form_page.go`) — editing a recipe never
+  reassigns authorship.
+
+  **The `user_recipes` table is not yet part of the schema provisioned by
+  [NAS-Images/postgres](https://github.com/SamuelHamann/NAS-Images/tree/main/postgres)
+  — add it there before deploying this version:**
+
+  ```sql
+  CREATE TABLE IF NOT EXISTS user_recipes (
+      recipe_id   bigint      PRIMARY KEY REFERENCES recipes(id) ON DELETE CASCADE,
+      user_id     bigint      NOT NULL REFERENCES users(id)      ON DELETE CASCADE,
+      created_at  timestamptz NOT NULL DEFAULT now()
+  );
+
+  CREATE INDEX IF NOT EXISTS user_recipes_user_idx
+      ON user_recipes (user_id);
+  ```
+- **Collection** (`collections`, bigint id) — `user_id` (required, FK →
+  `users`), `name` (required, unique per user via `UNIQUE(user_id, name)` —
+  different users can each have their own "Favorites"), `created_at`,
+  `updated_at`. A user-curated, named list of recipes ("Weeknight Dinners",
+  "Meal Prep Sunday"), created from the [Profile page](#profile-page-get-settingsprofile)
+  (no rename/delete yet). `ON DELETE CASCADE`: a collection has no meaning
+  once its owner is gone.
+
+  **The `collections` table is not yet part of the schema provisioned by
+  [NAS-Images/postgres](https://github.com/SamuelHamann/NAS-Images/tree/main/postgres)
+  — add it there before deploying this version:**
+
+  ```sql
+  CREATE TABLE IF NOT EXISTS collections (
+      id          bigserial   PRIMARY KEY,
+      user_id     bigint      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name        text        NOT NULL,
+      created_at  timestamptz NOT NULL DEFAULT now(),
+      updated_at  timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (user_id, name)
+  );
+
+  CREATE INDEX IF NOT EXISTS collections_user_idx
+      ON collections (user_id);
+  ```
+- **CollectionRecipe** (`collection_recipes`, composite key `collection_id` +
+  `recipe_id`) — a true many-to-many junction: a recipe can sit in several
+  collections (including ones owned by different users) and a collection
+  can hold many recipes. Toggled from the recipes list/detail pages' "add to
+  collection" widget (`ToggleCollectionRecipe` in
+  `internal/store/collections.go`) — idempotent add-if-absent/remove-if-present,
+  restricted server-side to the collection's own owner. `ON DELETE CASCADE`
+  both ways: the entry is meaningless once either side is gone.
+
+  **The `collection_recipes` table is not yet part of the schema provisioned
+  by
+  [NAS-Images/postgres](https://github.com/SamuelHamann/NAS-Images/tree/main/postgres)
+  — add it there before deploying this version:**
+
+  ```sql
+  CREATE TABLE IF NOT EXISTS collection_recipes (
+      collection_id  bigint      NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+      recipe_id      bigint      NOT NULL REFERENCES recipes(id)     ON DELETE CASCADE,
+      created_at     timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (collection_id, recipe_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS collection_recipes_recipe_idx
+      ON collection_recipes (recipe_id);
+  ```
 
 ## API reference
 
@@ -459,8 +552,12 @@ when no one is signed in.
 | POST   | `/users/{id}/update`   | Rename a user — form field: `username`                           |
 | POST   | `/users/{id}/delete`   | Delete a user (signs the browser out if it was the active one)   |
 | POST   | `/users/{id}/select`   | Sign in as this user (sets the `wfd_user_id` cookie)              |
-| GET    | `/recipes`             | Recipes page: grouped/coloured by pantry-relative readiness, with sort + tag filter |
-| GET    | `/recipes/{id}`        | Recipe detail page: ingredients (missing ones highlighted) + instructions |
+| GET    | `/recipes`             | Recipes page: grouped/coloured by pantry-relative readiness, with sort + tag + collection filters |
+| GET    | `/recipes/new`         | New-recipe form (blank)                                           |
+| POST   | `/recipes`             | Create a recipe, its ingredient list and tags (form)               |
+| GET    | `/recipes/{id}`        | Recipe detail page: author, ingredients (missing ones highlighted), instructions, "add to collection" widget |
+| GET    | `/recipes/{id}/edit`   | Edit-recipe form (prefilled)                                       |
+| POST   | `/recipes/{id}/update` | Save a recipe's fields, replacing its ingredient list and tags (form) |
 | POST   | `/recipes/{id}/cook`   | Cook the recipe: decrement pantry stock, record it as cooked, optionally save leftovers as a combined ingredient (form) |
 | GET    | `/pantry`              | Pantry page: grouped/coloured stock list with sort + tag filter  |
 | POST   | `/pantry`              | Add a pantry item (form)                                          |
@@ -479,6 +576,9 @@ when no one is signed in.
 | POST   | `/settings/admin/pantries` | Create a pantry — form field: `name`                          |
 | POST   | `/settings/admin/pantries/{id}/update` | Rename a pantry — form field: `name`               |
 | POST   | `/settings/admin/pantry-access` | Replace the whole `user_pantry` access matrix in one submission — repeated `access` fields, each `"<user_id>:<pantry_id>"` |
+| GET    | `/settings/profile`    | Profile page: the signed-in user's collections + a "+ Create collection" form |
+| POST   | `/collections`         | Create a collection owned by the signed-in user — form field: `name` |
+| POST   | `/collections/{id}/recipes/{recipeId}/toggle` | Add/remove a recipe from a collection (idempotent toggle; only the collection's owner may do this) |
 
 There's no password: the users table is just "who is using this household
 device right now". `/login` doubles as both the sign-in picker and the user
@@ -500,18 +600,32 @@ Cards:
 - Default — everything else, or every recipe when there is no selected
   pantry.
 
-Each row shows the recipe name, its "missing N ingredient(s)" badge (or
-"Ready to cook"), servings/prep/cook times when present, and a strip of
-its tag chips.
+Each row shows the recipe name (separated by "|" from its readiness badge
+when one is shown), who created it (if it has an author — see
+**UserRecipe** in [Data model](#data-model)), its "missing N ingredient(s)"
+badge (or "Ready to cook"), servings/prep/cook times when present, and a
+strip of its tag chips. A signed-in user with at least one collection also
+gets a bookmark-icon "add to collection" button on every row, colored
+yellow once the recipe is in at least one collection (see
+[Collections](#collections) below) — the row itself is a "stretched link"
+overlay rather than a real `<a>` wrapping everything, precisely so that
+button can be a real nested interactive control (see
+`.wfd-status-item--card-link` in `styles.html`).
 
 Query parameters (all optional; preserved across the toolbar so filter +
 sort choices survive page reloads and future CRUD redirects):
 
 | Parameter    | Values                              | Default        | Description                                              |
-| ------------ | ----------------------------------- | -------------- | -------------------------------------------------------- |
-| `pantry_id`  | integer                             | first pantry   | Which pantry to score recipes against                    |
-| `sort`       | `missing` \| `alphabetical`         | `missing`      | Grouping mode (see below)                                |
-| `tags`       | integer (repeat: `?tags=1&tags=2`)  | none           | Recipe must carry **every** listed tag ID (AND semantics — matches `/recipes/cookable`) |
+| ------------ | ------------------------------------ | -------------- | -------------------------------------------------------- |
+| `pantry_id`  | integer                              | first pantry   | Which pantry to score recipes against                    |
+| `sort`       | `missing` \| `alphabetical`          | `missing`      | Grouping mode (see below)                                |
+| `tags`       | integer (repeat: `?tags=1&tags=2`)   | none           | Recipe must carry **every** listed tag ID (AND semantics — matches `/recipes/cookable`) |
+
+**Collections and creator are separate, client-side-only filters** — see
+[Collections](#collections) below — not query parameters: every recipe
+matching `pantry_id`/`sort`/`tags` above is always rendered, and checking a
+box in the "Collections" or "Creator" toolbar dropdown just hides/shows
+rows already on the page via JavaScript, no round trip and no URL state.
 
 Grouping modes:
 
@@ -532,8 +646,11 @@ client-side, as you type — see [Live search](#live-search) below.
 ### Recipe detail page (`GET /recipes/{id}`)
 
 Clicking a recipe on the recipes page opens its full detail: name,
-description, servings/prep/cook time, tag chips, its ingredient list and its
-instructions.
+description, who created it (if it has an author), servings/prep/cook time,
+tag chips, its ingredient list and its instructions. An **Edit recipe**
+button (see [Recipe form](#recipe-form) below) and, for a signed-in user
+with at least one collection, the same "add to collection" widget as the
+recipes list sit in a row alongside **Cook this recipe**.
 
 - **Ingredients** — every ingredient the recipe calls for, in alphabetical
   order, with **ingredients missing from the selected pantry floated to the
@@ -597,6 +714,62 @@ hidden `confirmed=true` field, which skips the missing-ingredient check on
 the next attempt. All three writes happen in one transaction
 (`Store.CookRecipe`, `internal/store/cook.go`) — either everything above
 happens, or nothing does.
+
+### Recipe form (`GET`/`POST /recipes/new`, `GET`/`POST /recipes/{id}/edit`)
+
+One template (`templates/recipe_form.html`) backs both creating a recipe
+(linked from a "+ New recipe" button on the recipes page) and editing an
+existing one (linked from the detail page's **Edit recipe** button) — only
+the form's action URL, submit label and prefilled values differ. Submitting
+posts to `POST /recipes` (create) or `POST /recipes/{id}/update` (edit);
+both redirect to the recipe's detail page on success, or back to the form
+with `?error=...` on failure.
+
+Fields: name (required), description/instructions (free text — see
+[Recipe detail page](#recipe-detail-page-get-recipesid) above for how
+instructions get split into steps), source URL, servings (required to be
+`>0` if set), prep/cook time in minutes (`≥0` if set — unlike servings, a
+no-cook recipe legitimately has 0 cook time), tag chips, and a repeatable
+ingredient list (quantity/unit/note per row, same `item-rows-script` used by
+the ingredients page's combined-ingredient form). A recipe is allowed to
+have **zero** ingredients (e.g. saved before the list is filled in) —
+unlike a combined ingredient, which requires at least one component.
+
+Creating a recipe while signed in attributes it to that user (see
+**UserRecipe** in [Data model](#data-model)); editing never changes the
+author.
+
+**Ingredient picker.** Each row's ingredient field is a real, fully
+functional `<select>` — identical to the plain picker already used by the
+combined-ingredient form — progressively enhanced into a searchable
+dropdown:
+
+- On page load, `"ingredient-picker-script"` (`templates/scripts.html`)
+  hides the `<select>` and shows a search `<input>` + dropdown in its
+  place, built from the `<select>`'s own `<option>`s. The `<select>` stays
+  in the DOM the whole time and is what's actually submitted
+  (`item_ingredient_id`) — with JavaScript disabled the search/dropdown
+  markup simply never appears and the plain `<select>` is shown and
+  submitted instead, so the feature degrades gracefully rather than
+  breaking.
+- Typing filters the dropdown to matching ingredient names. If nothing
+  matches exactly, a "+ Create '\<query\>'" option appears; picking it opens
+  a small panel (tag checkboxes + Create & use) that `fetch()`-POSTs to
+  `POST /ingredients/quick-create` (`IngredientsQuickCreate` in
+  `ingredients_page.go` — the same `parseIngredientForm`/
+  `CreateIngredientWithTags` as the ingredients page's own create form, just
+  responding with JSON `{"id":..,"name":..}` instead of redirecting) and,
+  on success, adds the new ingredient as an `<option>` to **every** picker's
+  `<select>` on the page and selects it — no page reload. This is the one
+  place in the app that uses `fetch()`; everywhere else is plain form
+  POST + redirect.
+- Rows added via "+ Add ingredient" are cloned from a `<template>` (same
+  mechanism as the combined-ingredient form) and start as a plain,
+  unenhanced `<select>`; `ingredient-picker-script` also listens for that
+  click and enhances whatever picker ends up in the newly appended row —
+  which only works because its own `<script>` include comes after
+  `"item-rows-script"`'s in the page (its listener must run its
+  clone-and-append first).
 
 ### Pantry page (`GET /pantry`)
 
@@ -874,6 +1047,64 @@ user** — see `navbar.html`). Two things live here (`admin_page.go`,
   If there are no users or no pantries yet, the matrix is replaced with a
   short message pointing at what to create first — there's nothing
   meaningful to grant access to otherwise.
+
+### Profile page (`GET /settings/profile`)
+
+Linked from the navbar's settings menu (**Profile**, next to **Admin
+page**). Being signed out just shows a "sign in first" prompt (there's no
+password-protected auth to redirect through — see `session.go`).
+
+Signed in, it lists the current user's **Collections** — named lists of
+recipes ("Weeknight Dinners", "Meal Prep Sunday") — with a "+ Create
+collection" form (`POST /collections`, form field `name`). There's no
+rename/delete for collections yet, only creation and the list. A collection
+name only needs to be unique for that one user (`UNIQUE(user_id, name)` on
+`collections`), so different people can each have their own "Favorites".
+
+### Collections
+
+A collection's actual contents (which recipes it holds) are managed from
+*outside* the profile page — the recipes list and the recipe detail page
+both carry a bookmark-icon **"add to collection"** widget (`collection_picker`
+in `recipes.html`, reused by `recipe_detail.html`) next to every recipe a
+signed-in user with at least one collection can see. The icon itself turns
+yellow (`.wfd-icon-btn--bookmarked`) once the recipe is in at least one
+collection. Opening it shows a checkbox per collection, pre-checked for
+whichever ones already contain that recipe.
+
+Toggling a checkbox is handled by `"collection-toggle-script"`
+(`scripts.html`): it `fetch()`-POSTs to
+`/collections/{id}/recipes/{recipeId}/toggle` with an `X-Requested-With:
+fetch` header and no page reload — `CollectionsToggleRecipe`
+(`collections.go`) detects that header and responds with a small JSON body
+(`{"added": true|false}`) instead of redirecting; a failed request reverts
+the checkbox. **This widget requires JavaScript** — same as the
+item-rows/ingredient-picker/tabs scripts elsewhere in this app — there's no
+non-JS fallback (a plain `<form>`/`redirect_to` still exist in the markup
+and the handler still supports a real, non-fetch submission that redirects
+back to `redirect_to`, but nothing currently triggers one without JS).
+
+The toggle is idempotent with respect to whatever the DB currently holds —
+add if the recipe isn't in the collection yet, remove if it is
+(`ToggleCollectionRecipe` in `internal/store/collections.go`) — and is
+restricted server-side to the collection's own owner, even though the UI
+never shows anyone a collection that isn't already theirs.
+
+Once a user has at least one collection, the recipes page also gets a
+**Collections** filter dropdown, and (once at least one recipe has an
+author) a **Creator** filter dropdown — both checkbox lists in a `<details>`
+popover, both entirely client-side (see `"checkbox-filter-script"` in
+`scripts.html`): every recipe matching the pantry/tag filters is always
+rendered server-side, and checking a box just hides/shows rows already in
+the DOM by comparing against each row's `data-filter-collections`/
+`data-filter-creator` attribute (a comma-separated list of the values that
+row matches, rendered via the `mapKeysCSV` template func for collections).
+Both dropdowns use OR semantics (a row matches if it has *any* checked
+value in that facet), and the two facets combine with AND (and with the
+search box) — a row needs to pass every active filter to stay visible. This
+is why the recipes page's "add to collection"/filter widgets carry no
+`?collections=`/`?creator=` query parameters or URL state, unlike the
+server-side `tags` filter: there's no round trip to preserve state across.
 
 ### Live search
 

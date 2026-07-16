@@ -1,0 +1,64 @@
+{{/*
+    Profile page: GET /settings/profile, linked from the navbar's settings
+    menu. Where a signed-in user manages their collections (named lists of
+    recipes — see the "add to collection" widget on the recipes list/detail
+    pages, collections.go). There's no rename/delete for collections yet,
+    only creation and the list below.
+
+    There's no password-protected auth in this app (see session.go), so
+    being signed out just shows a "sign in first" prompt instead of the
+    collections UI.
+*/}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>{{.Title}} · What's for Dinner</title>
+  {{template "styles" .}}
+</head>
+<body>
+  {{template "navbar" .}}
+
+  <main class="wfd-main wfd-container">
+    <h1 class="wfd-page-title">Profile</h1>
+
+    {{if .Error}}
+    <p class="wfd-error-banner">{{.Error}}</p>
+    {{end}}
+
+    {{if not .SignedIn}}
+      <p class="wfd-list-empty">
+        <a href="/login">Sign in</a> to manage your collections.
+      </p>
+    {{else}}
+      <p class="wfd-page-subtitle">Signed in as <strong>{{.CurrentUser}}</strong>.</p>
+
+      <section class="wfd-recipe-section">
+        <h2 class="wfd-section-title">Collections</h2>
+        <p class="wfd-page-subtitle">
+          Named lists of recipes — use the bookmark button on a recipe to add it to one.
+        </p>
+
+        <ul class="wfd-list">
+          {{range .Collections}}
+          <li class="wfd-list-row">
+            <span class="wfd-list-row__main wfd-list-row__name">{{.Name}}</span>
+          </li>
+          {{else}}
+          <p class="wfd-list-empty">No collections yet — create the first one below.</p>
+          {{end}}
+        </ul>
+
+        <details class="wfd-create">
+          <summary class="wfd-btn wfd-btn--primary">+ Create collection</summary>
+          <form method="post" action="/collections" class="wfd-inline-form">
+            <input type="text" name="name" placeholder="Collection name" required maxlength="255" />
+            <button type="submit" class="wfd-btn wfd-btn--primary">Create</button>
+          </form>
+        </details>
+      </section>
+    {{end}}
+  </main>
+</body>
+</html>

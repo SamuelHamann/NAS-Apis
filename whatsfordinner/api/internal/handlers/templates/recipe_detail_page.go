@@ -16,6 +16,23 @@ type RecipeDetailPageData struct {
 
 	Recipe models.Recipe
 	Tags   []string
+	// Author is who created this recipe, nil for seed data / recipes
+	// created before this feature existed.
+	Author *string
+
+	// UserCollections is the signed-in user's own collections, backing the
+	// "add to collection" widget. Empty while signed out or before they've
+	// created one.
+	UserCollections []models.Collection
+	// CollectionMembership[collectionID] reports whether this recipe is
+	// already in that collection — pre-checks the widget's boxes. Only
+	// ever covers UserCollections' IDs.
+	CollectionMembership map[int64]bool
+
+	// CurrentURL is this request's full path+query, round-tripped through
+	// the "add to collection" toggle form (redirect_to) so toggling a
+	// checkbox lands back on this same recipe.
+	CurrentURL string
 
 	// Ingredients is missing-from-pantry rows first (alphabetical), then
 	// in-stock rows (also alphabetical). See OrderRecipeIngredients.
@@ -107,6 +124,13 @@ func (h *Handler) RecipeDetailPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	author, err := h.store.GetRecipeAuthorUsername(ctx, id)
+	if err != nil {
+		h.logger.Error("get recipe author", "error", err)
+		http.Error(w, "failed to load recipe", http.StatusInternalServerError)
+		return
+	}
+
 	var instructions []string
 	if recipe.Instructions != nil {
 		instructions = ParseInstructionSteps(*recipe.Instructions)
@@ -127,16 +151,42 @@ func (h *Handler) RecipeDetailPage(w http.ResponseWriter, r *http.Request) {
 		PageData:       h.newPageData(r, recipe.Name, "recipes"),
 		Recipe:         recipe,
 		Tags:           tags,
+		Author:         author,
 		Ingredients:    OrderRecipeIngredients(rows),
 		Instructions:   instructions,
 		SelectedPantry: selected,
 		Pantries:       pantries,
 		Units:          units,
+		CurrentURL:     r.URL.RequestURI(),
 
 		Error:              r.URL.Query().Get("error"),
 		CookMultiplier:     r.URL.Query().Get("cook_multiplier"),
 		CookCreateCombined: r.URL.Query().Get("cook_combined") == "on",
 	}
+
+	// Collections + membership for this one recipe: only for the signed-in
+	// user, and only their own collections.
+	if data.SignedIn {
+		userID, _ := sessionUserID(r)
+		if data.UserCollections, err = h.store.ListCollectionsForUser(ctx, userID); err != nil {
+			h.logger.Error("list collections", "error", err)
+			http.Error(w, "failed to load collections", http.StatusInternalServerError)
+			return
+		}
+		pairs, err := h.store.ListCollectionRecipesForUser(ctx, userID)
+		if err != nil {
+			h.logger.Error("list collection recipes", "error", err)
+			http.Error(w, "failed to load collections", http.StatusInternalServerError)
+			return
+		}
+		data.CollectionMembership = map[int64]bool{}
+		for _, p := range pairs {
+			if p.RecipeID == id {
+				data.CollectionMembership[p.CollectionID] = true
+			}
+		}
+	}
+
 	if data.CookMultiplier == "" {
 		data.CookMultiplier = "1"
 	}

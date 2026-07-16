@@ -52,7 +52,7 @@
 
       <label>
         Servings
-        <input type="number" name="servings" min="0" step="1" value="{{if and .Recipe .Recipe.Servings}}{{deref .Recipe.Servings}}{{end}}" />
+        <input type="number" name="servings" min="1" step="1" value="{{if and .Recipe .Recipe.Servings}}{{deref .Recipe.Servings}}{{end}}" />
       </label>
 
       <label>

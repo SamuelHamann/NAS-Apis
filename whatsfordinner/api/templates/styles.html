@@ -83,8 +83,15 @@
      hidden and the *card* itself disappears — which looks exactly like
      "nothing happens until it all disappears at once". Re-assert it here,
      after the reset but before anything sets `display` on a real element,
-     so it always wins. */
-  [hidden] { display: none !important; }
+     so it always wins.
+
+     .wfd-filtered-hide is the same idea for templates/scripts.html's
+     "checkbox-filter-script" (recipes page collection/creator filters):
+     a class rather than the [hidden] attribute so it can be toggled
+     independently of (and combine with) the search filter's own [hidden]
+     without either script needing to know about the other's state — a row
+     is visible only once *neither* is present. */
+  [hidden], .wfd-filtered-hide { display: none !important; }
 
   .wfd-container {
     width: 100%;
@@ -248,6 +255,14 @@
   }
   .wfd-icon-btn svg { width: 22px; height: 22px; }
 
+  /* Bookmark trigger on the "add to collection" widget, once the recipe is
+     in at least one collection (see collection_picker in recipes.html —
+     the icon itself uses stroke="currentColor", so this just recolors it). */
+  .wfd-icon-btn--bookmarked { color: #eab308; }
+  @media (prefers-color-scheme: dark) {
+    .wfd-icon-btn--bookmarked { color: #facc15; }
+  }
+
   /* --- Settings dropdown: plain <details>, so it opens/closes on tap with
      no JavaScript and is keyboard accessible for free. --- */
   .wfd-settings { position: relative; }
@@ -276,6 +291,49 @@
     font-size: 0.95rem;
     font-weight: 500;
   }
+  /* --- Generic checkbox dropdown: plain <details>, same zero-JS pattern as
+     .wfd-settings above. Used for the recipes page's "filter by collection"
+     toolbar dropdown and the "add to collection" widget on recipe rows /
+     the detail page (see collection_picker in recipes.html). --- */
+  .wfd-dropdown { position: relative; }
+  .wfd-dropdown > summary { list-style: none; }
+  .wfd-dropdown > summary::-webkit-details-marker { display: none; }
+
+  .wfd-dropdown__panel {
+    position: absolute;
+    left: 0;
+    top: calc(100% + 8px);
+    min-width: 220px;
+    max-width: calc(100vw - 2rem);
+    z-index: 15;
+    background: var(--wfd-surface);
+    border: 1px solid var(--wfd-border);
+    border-radius: var(--wfd-radius-md);
+    box-shadow: var(--wfd-shadow);
+    padding: 0.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .wfd-dropdown__panel form { display: contents; }
+  .wfd-dropdown__option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: var(--wfd-radius-sm);
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+  .wfd-dropdown__option:hover {
+    background: var(--wfd-surface-alt);
+  }
+  .wfd-dropdown__empty {
+    padding: 0.5rem 0.6rem;
+    color: var(--wfd-text-muted);
+    font-size: 0.85rem;
+  }
+
   .wfd-settings__panel a:hover, .wfd-settings__panel a:focus-visible {
     background: var(--wfd-surface-alt);
     outline: none;
@@ -857,6 +915,11 @@
     align-items: center;
     gap: 0.1rem;
     margin-left: auto;
+    /* Sits above .wfd-status-item__stretched-link (z-index 1) on recipe
+       rows, so its own controls (e.g. the "add to collection" widget)
+       still receive clicks instead of the card-wide link underneath. */
+    position: relative;
+    z-index: 2;
   }
   .wfd-pantry-item__edit[open] { flex-basis: 100%; margin-top: 0.5rem; }
 
@@ -972,7 +1035,14 @@
     border: 1px solid var(--wfd-border);
     border-radius: var(--wfd-radius-lg);
     box-shadow: var(--wfd-shadow);
-    overflow: hidden;
+    /* No overflow:hidden here (previously used to clip the title/last-row
+       backgrounds to the card's rounded corners) — that also clipped any
+       position:absolute popover opened from inside a row, e.g. the recipes
+       page's "add to collection" dropdown (see .wfd-dropdown__panel and
+       collection_picker in recipes.html), cutting it off instead of
+       floating above the rest of the page. The corners are rounded
+       explicitly below instead: .wfd-status-card__title (top) and the last
+       .wfd-status-item (bottom). */
   }
   .wfd-status-card__title {
     display: flex;
@@ -983,6 +1053,8 @@
     font-weight: 700;
     border-bottom: 1px solid var(--wfd-border);
     background: var(--wfd-surface-alt);
+    border-top-left-radius: var(--wfd-radius-lg);
+    border-top-right-radius: var(--wfd-radius-lg);
   }
   .wfd-status-card__count {
     margin-left: auto;
@@ -1029,6 +1101,13 @@
     border-top: 1px solid var(--wfd-border);
   }
   .wfd-status-item:first-of-type { border-top: none; }
+  /* Compensates for .wfd-status-card no longer clipping via overflow:hidden
+     (see the comment there) — without this, a toned last row's background
+     would square off past the card's rounded bottom corners. */
+  .wfd-status-item:last-child {
+    border-bottom-left-radius: var(--wfd-radius-lg);
+    border-bottom-right-radius: var(--wfd-radius-lg);
+  }
   .wfd-status-item__body {
     flex: 1 1 220px;
     min-width: 0;
@@ -1086,18 +1165,28 @@
     .wfd-status-item--info { background: rgba(96, 165, 250, 0.16); }
   }
 
-  /* Recipe rows are links through to the detail page (GET /recipes/{id});
-     keep the same layout as the plain <article> version but signal
-     interactivity without fighting the tone backgrounds above. */
-  a.wfd-status-item--link {
+  /* Recipe rows are clickable through to the detail page (GET
+     /recipes/{id}) but also host the "add to collection" widget — a
+     <details>/checkbox/form nested inside an <a> isn't valid HTML and
+     would fight the anchor for clicks anyway, so the row is a plain <div>
+     with a full-size "stretched link" <a> overlay (z-index 1) rather than
+     being an <a> itself; the actions cluster sits above it at z-index 2
+     (see .wfd-pantry-item__actions) so it still receives its own clicks.
+     See recipe_item in recipes.html. */
+  .wfd-status-item--card-link {
+    position: relative;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
   }
-  a.wfd-status-item--link:hover .wfd-status-item__title span:first-child,
-  a.wfd-status-item--link:focus-visible .wfd-status-item__title span:first-child {
+  .wfd-status-item__stretched-link {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+  }
+  .wfd-status-item--card-link:hover .wfd-status-item__title span:first-child {
     text-decoration: underline;
   }
-  a.wfd-status-item--link:focus-visible {
+  .wfd-status-item__stretched-link:focus-visible {
     outline: 2px solid var(--wfd-primary);
     outline-offset: -2px;
   }

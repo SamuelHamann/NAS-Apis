@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"sort"
 	"strconv"
 
 	"github.com/SamuelHamann/NAS-Apis/whatsfordinner/internal/models"
@@ -26,8 +27,36 @@ type RecipesPageData struct {
 	Sort           RecipeSort
 	SelectedTagIDs map[int64]bool
 
-	// For the toolbar's tag filter.
+	// For the toolbar's tag filter (server-side, full reload — see
+	// RecipeStatusFilter.TagIDs). Collection/creator filtering, below, is
+	// client-side only (see "checkbox-filter-script" in scripts.html) so
+	// there's no equivalent Selected*/query-param plumbing for them: every
+	// recipe matching the pantry+tag filters is always rendered, and
+	// checking a collection/creator box just hides/shows rows already on
+	// the page.
 	Tags []models.Tag
+
+	// Authors is every distinct AuthorUsername among the currently rendered
+	// recipes (Cards), alphabetical — backs the "filter by creator" dropdown.
+	Authors []string
+
+	// UserCollections is the signed-in user's own collections — backs both
+	// the toolbar's "filter by collection" dropdown and each row's "add to
+	// collection" widget. Empty (not just while signed out) when the user
+	// hasn't created one yet.
+	UserCollections []models.Collection
+	// CollectionMembership[recipeID][collectionID] reports whether that
+	// recipe is already in that collection — pre-checks the "add to
+	// collection" widget's boxes, and (as a comma-separated string, see the
+	// mapKeysCSV template func) backs each row's client-side collection
+	// filter. Only ever covers UserCollections' IDs.
+	CollectionMembership map[int64]map[int64]bool
+
+	// CurrentURL is this request's full path+query, round-tripped through
+	// the "add to collection" toggle forms (redirect_to) so a non-JS
+	// fallback submission lands back on the same page instead of a bare
+	// /recipes.
+	CurrentURL string
 }
 
 // RecipesPage renders GET /recipes: every recipe, grouped and colour-coded
@@ -44,9 +73,10 @@ func (h *Handler) RecipesPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := RecipesPageData{
-		PageData: h.newPageData(r, "Recipes", "recipes"),
-		Pantries: pantries,
-		Sort:     parseRecipeSort(r.URL.Query().Get("sort")),
+		PageData:   h.newPageData(r, "Recipes", "recipes"),
+		Pantries:   pantries,
+		Sort:       parseRecipeSort(r.URL.Query().Get("sort")),
+		CurrentURL: r.URL.RequestURI(),
 	}
 
 	// Pantry picker: same rules as the pantry page — honour ?pantry_id, else
@@ -75,6 +105,31 @@ func (h *Handler) RecipesPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Collections + membership: only for the signed-in user, and only their
+	// own collections — "filter by collection" and "add to collection" are
+	// both meaningless without one.
+	if data.SignedIn {
+		userID, _ := sessionUserID(r)
+		if data.UserCollections, err = h.store.ListCollectionsForUser(ctx, userID); err != nil {
+			h.logger.Error("list collections", "error", err)
+			http.Error(w, "failed to load collections", http.StatusInternalServerError)
+			return
+		}
+		pairs, err := h.store.ListCollectionRecipesForUser(ctx, userID)
+		if err != nil {
+			h.logger.Error("list collection recipes", "error", err)
+			http.Error(w, "failed to load collections", http.StatusInternalServerError)
+			return
+		}
+		data.CollectionMembership = make(map[int64]map[int64]bool, len(pairs))
+		for _, p := range pairs {
+			if data.CollectionMembership[p.RecipeID] == nil {
+				data.CollectionMembership[p.RecipeID] = make(map[int64]bool)
+			}
+			data.CollectionMembership[p.RecipeID][p.CollectionID] = true
+		}
+	}
+
 	// Without a pantry the "missing" sort is meaningless — force
 	// alphabetical so the UI matches what actually happens.
 	if data.SelectedPantry == nil {
@@ -93,6 +148,19 @@ func (h *Handler) RecipesPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.Cards = GroupRecipes(rows, data.Sort)
+
+	// Distinct authors among these recipes, for the "filter by creator"
+	// dropdown — cheap to derive from rows already in hand rather than a
+	// separate query.
+	seenAuthors := map[string]bool{}
+	for _, row := range rows {
+		if row.AuthorUsername == nil || seenAuthors[*row.AuthorUsername] {
+			continue
+		}
+		seenAuthors[*row.AuthorUsername] = true
+		data.Authors = append(data.Authors, *row.AuthorUsername)
+	}
+	sort.Strings(data.Authors)
 
 	ts, ok := h.templatesCache["recipes.html"]
 	if !ok {

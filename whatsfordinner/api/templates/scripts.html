@@ -356,3 +356,209 @@
 })();
 </script>
 {{end}}
+
+{{/*
+    Shared vanilla-JS multi-facet checkbox filter (currently the recipes
+    page's "Collections" and "Creator" dropdowns — see recipes.html).
+    Include once via {{template "checkbox-filter-script" .}}, after
+    "search-script" if both are on the same page (see below for why).
+
+    Wire-up is via data attributes:
+      - a container (e.g. a dropdown panel) carries data-filter-group="name"
+        (the facet's name, e.g. "collections"), data-filter-scope (a CSS
+        selector for the container holding the filterable rows) and
+        data-filter-empty (a CSS selector for a "nothing matches" message,
+        shown only once at least one filter is active and nothing passes);
+      - every checkbox inside such a container carries data-filter-value
+        with the value it represents (e.g. a collection ID, or a creator's
+        username);
+      - every filterable row carries data-search-name (the same attribute
+        search-script uses — a filterable row is a filterable row) plus one
+        data-filter-<name> attribute per facet, a comma-separated list of
+        the values it matches for that facet (e.g.
+        data-filter-collections="1,3"). A row with no values for a facet
+        (e.g. an unauthored recipe's data-filter-creator="") simply never
+        matches anything checked in that facet.
+
+    A row passes if, for EVERY facet with at least one box checked, its own
+    data-filter-<name> list intersects the checked values (facets with
+    nothing checked are skipped — vacuously passed). Passing rows are shown;
+    failing rows get the .wfd-filtered-hide class (not the `hidden`
+    attribute) so this composes with search-script's own hidden-toggling
+    instead of one clobbering the other — see the [hidden], .wfd-filtered-hide
+    rule in styles.html. For the same reason, this script also re-runs its
+    checks whenever the search box changes (must come after search-script's
+    own listener, i.e. this template include must too), so a card's
+    "everything filtered out" state accounts for both search and facet
+    filters together rather than just its own.
+
+    Degrades gracefully with JS disabled: the filter checkboxes have no
+    onchange/form-submit fallback of their own (same as every other
+    auto-filtering checkbox in this app — tag/pantry/sort pickers are all
+    JS-driven too), so without JS every row simply stays visible, as if
+    nothing were checked.
+*/}}
+{{define "checkbox-filter-script"}}
+<script>
+(function () {
+  var groups = {};
+  document.querySelectorAll('[data-filter-group]').forEach(function (container) {
+    var name = container.getAttribute('data-filter-group');
+    groups[name] = {
+      checkboxes: Array.prototype.slice.call(container.querySelectorAll('input[type="checkbox"][data-filter-value]')),
+      scope: document.querySelector(container.getAttribute('data-filter-scope') || ''),
+      empty: document.querySelector(container.getAttribute('data-filter-empty') || ''),
+    };
+  });
+  var groupNames = Object.keys(groups);
+  if (!groupNames.length) return;
+
+  function checkedValues(name) {
+    return groups[name].checkboxes
+      .filter(function (cb) { return cb.checked; })
+      .map(function (cb) { return cb.getAttribute('data-filter-value'); });
+  }
+
+  function rowMatches(row, name, checked) {
+    if (checked.length === 0) return true;
+    var raw = row.getAttribute('data-filter-' + name) || '';
+    var values = raw.split(',').filter(function (v) { return v !== ''; });
+    return values.some(function (v) { return checked.indexOf(v) !== -1; });
+  }
+
+  function apply() {
+    var checkedByGroup = {};
+    var anyChecked = false;
+    groupNames.forEach(function (name) {
+      checkedByGroup[name] = checkedValues(name);
+      if (checkedByGroup[name].length) anyChecked = true;
+    });
+
+    var rows = document.querySelectorAll('[data-search-name]');
+    rows.forEach(function (row) {
+      var visible = groupNames.every(function (name) {
+        return rowMatches(row, name, checkedByGroup[name]);
+      });
+      row.classList.toggle('wfd-filtered-hide', !visible);
+    });
+
+    document.querySelectorAll('[data-search-card]').forEach(function (card) {
+      card.hidden = card.querySelectorAll('[data-search-name]:not([hidden]):not(.wfd-filtered-hide)').length === 0;
+    });
+
+    var anyVisible = Array.prototype.some.call(rows, function (row) {
+      return !row.hidden && !row.classList.contains('wfd-filtered-hide');
+    });
+    groupNames.forEach(function (name) {
+      var empty = groups[name].empty;
+      if (empty) empty.hidden = !anyChecked || anyVisible;
+    });
+  }
+
+  groupNames.forEach(function (name) {
+    groups[name].checkboxes.forEach(function (cb) {
+      cb.addEventListener('change', apply);
+    });
+  });
+
+  // Re-run whenever the search box changes too, so a card's "all rows
+  // filtered out" state (and the empty message) accounts for both search
+  // and facet filters together — see the doc comment above.
+  document.querySelectorAll('[data-search-input]').forEach(function (input) {
+    input.addEventListener('input', apply);
+  });
+
+  apply();
+})();
+</script>
+{{end}}
+
+{{/*
+    Shared vanilla-JS "add to collection" toggle (currently the recipes
+    list and recipe detail page's collection_picker — see recipes.html).
+    Include once via {{template "collection-toggle-script" .}}.
+
+    Wire-up: every checkbox carries data-collection-toggle-checkbox and
+    lives inside a <form data-collection-toggle-form action="/collections/
+    {id}/recipes/{recipeId}/toggle">, all inside a <details class="wfd-dropdown">
+    whose <summary> is the bookmark-icon trigger button. On change,
+    fetch()-POSTs to that action (no page reload) instead of letting the
+    checkbox do nothing; the endpoint is idempotent (adds if absent,
+    removes if present) so the checkbox's own new state doesn't need to be
+    sent, and a failed request reverts the checkbox rather than leaving the
+    UI out of sync with the server. Either way, the trigger's
+    wfd-icon-btn--bookmarked class (see styles.html) is immediately kept in
+    sync with whether ANY of the widget's checkboxes are now checked — no
+    reload needed to see the icon turn yellow (or back).
+
+    Requires JavaScript — same as item-rows/ingredient-picker/tabs
+    elsewhere in this app. There is no non-JS fallback for this widget.
+*/}}
+{{define "collection-toggle-script"}}
+<script>
+(function () {
+  function syncBookmarkIcon(picker) {
+    if (!picker) return;
+    var summary = picker.querySelector('summary');
+    if (!summary) return;
+    var anyChecked = Array.prototype.some.call(
+      picker.querySelectorAll('[data-collection-toggle-checkbox]'),
+      function (cb) { return cb.checked; }
+    );
+    summary.classList.toggle('wfd-icon-btn--bookmarked', anyChecked);
+  }
+
+  document.addEventListener('change', function (event) {
+    var checkbox = event.target.closest('[data-collection-toggle-checkbox]');
+    if (!checkbox) return;
+
+    var form = checkbox.closest('[data-collection-toggle-form]');
+    if (!form) return;
+    var picker = checkbox.closest('.wfd-dropdown');
+
+    syncBookmarkIcon(picker);
+
+    checkbox.disabled = true;
+    fetch(form.action, {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'fetch' },
+    })
+      .then(function (resp) {
+        checkbox.disabled = false;
+        if (!resp.ok) {
+          checkbox.checked = !checkbox.checked;
+          syncBookmarkIcon(picker);
+        }
+      })
+      .catch(function () {
+        checkbox.disabled = false;
+        checkbox.checked = !checkbox.checked;
+        syncBookmarkIcon(picker);
+      });
+  });
+})();
+</script>
+{{end}}
+
+{{/*
+    Shared vanilla-JS "close on outside click" for every <details
+    class="wfd-dropdown"> popover (the recipes page's Collections/Creator
+    filter dropdowns and the "add to collection" widget — see recipes.html).
+    Include once via {{template "dropdown-script" .}}.
+
+    Native <details> only closes when its own <summary> is clicked again;
+    this adds the usual "click anywhere else closes it" behaviour on top,
+    without interfering with clicks on the dropdown's own checkboxes (which
+    should stay open to allow checking more than one box per open/close).
+*/}}
+{{define "dropdown-script"}}
+<script>
+(function () {
+  document.addEventListener('click', function (event) {
+    document.querySelectorAll('.wfd-dropdown[open]').forEach(function (dropdown) {
+      if (!dropdown.contains(event.target)) dropdown.removeAttribute('open');
+    });
+  });
+})();
+</script>
+{{end}}

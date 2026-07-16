@@ -30,6 +30,7 @@
     {{end}}
 
     <div class="wfd-recipe-meta">
+      {{if .Author}}<span>By <strong>{{deref .Author}}</strong></span>{{end}}
       {{if .Recipe.Servings}}<span>Serves <strong>{{.Recipe.Servings}}</strong></span>{{end}}
       {{if .Recipe.PrepTimeMinutes}}<span>Prep <strong>{{.Recipe.PrepTimeMinutes}}m</strong></span>{{end}}
       {{if .Recipe.CookTimeMinutes}}<span>Cook <strong>{{.Recipe.CookTimeMinutes}}m</strong></span>{{end}}
@@ -47,6 +48,14 @@
         {{template "icon-bolt"}}
         <span>Cook this recipe</span>
       </button>
+      {{end}}
+
+      {{if .UserCollections}}
+      {{template "collection_picker" (dict
+          "Collections" .UserCollections
+          "Membership" .CollectionMembership
+          "RecipeID" .Recipe.ID
+          "RedirectTo" .CurrentURL)}}
       {{end}}
     </div>
 
@@ -160,5 +169,8 @@
       {{end}}
     </section>
   </main>
+
+  {{template "collection-toggle-script" .}}
+  {{template "dropdown-script" .}}
 </body>
 </html>

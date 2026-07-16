@@ -31,8 +31,10 @@ available while that migration is in progress.
 | POST      | `/pantry`                         | Add a pantry item (HTML form)        |
 | POST      | `/pantry/{id}/update`             | Edit a pantry item (HTML form)       |
 | POST      | `/pantry/{id}/delete`             | Delete a pantry item (HTML form)     |
-| GET       | `/recipes`                        | Recipes page (HTML): grouped/coloured by pantry-relative readiness, with sort + tag filter |
-| GET       | `/recipes/{id}`                   | Recipe detail page (HTML): ingredients (missing ones highlighted) + instructions |
+| GET       | `/recipes`                        | Recipes page (HTML): grouped/coloured by pantry-relative readiness, with sort + tag + collection filters |
+| GET       | `/recipes/new`, `/recipes/{id}/edit` | Create/edit-recipe form (HTML) |
+| POST      | `/recipes`, `/recipes/{id}/update` | Save a recipe's fields, ingredient list and tags (HTML form) |
+| GET       | `/recipes/{id}`                   | Recipe detail page (HTML): author, ingredients (missing ones highlighted), instructions, "add to collection" widget |
 | POST      | `/recipes/{id}/cook`              | Cook a recipe: decrement pantry stock, log it as cooked, optionally save leftovers as a combined ingredient (HTML form) |
 | CRUD      | `/recipes`, `/recipes/{id}`       | Recipes (bigint id)                    |
 | GET       | `/recipes/cookable`               | Recipes cookable from pantry stock   |
@@ -49,6 +51,9 @@ available while that migration is in progress.
 | POST      | `/settings/admin/pantries`        | Create a pantry (HTML form)          |
 | POST      | `/settings/admin/pantries/{id}/update` | Rename a pantry (HTML form)     |
 | POST      | `/settings/admin/pantry-access`   | Replace the whole user x pantry access matrix (`user_pantry` join table) in one submission (HTML form) |
+| GET       | `/settings/profile`               | Profile page (HTML): the signed-in user's collections + a create-collection form |
+| POST      | `/collections`                    | Create a collection owned by the signed-in user (HTML form) |
+| POST      | `/collections/{id}/recipes/{recipeId}/toggle` | Add/remove a recipe from a collection (idempotent toggle, owner-only) |
 
 See [`whatsfordinner/README.md`](./whatsfordinner/README.md) for full details,
 request bodies and configuration. The UI (navbar, home page, sign-in) is

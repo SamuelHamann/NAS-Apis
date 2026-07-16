@@ -148,6 +148,9 @@ func (h *Handler) RecipeCreate(w http.ResponseWriter, r *http.Request) {
 		redirectWithError(w, r, "/recipes/new", msg)
 		return
 	}
+	if userID, ok := sessionUserID(r); ok {
+		in.AuthorUserID = &userID
+	}
 
 	recipe, err := h.store.CreateRecipeWithRelations(r.Context(), in)
 	if err != nil {
@@ -210,11 +213,18 @@ func parseRecipeForm(form map[string][]string) (store.RecipeWithRelationsInput, 
 		in.SourceURL = &sourceURL
 	}
 
-	servings, msg := parseOptionalNonNegativeInt32(form["servings"], "servings")
-	if msg != "" {
-		return store.RecipeWithRelationsInput{}, msg
+	// Servings must be a positive count if given (matching the legacy JSON
+	// API's validation in recipes.go) — unlike prep/cook time, zero
+	// servings isn't a meaningful recipe. Prep/cook time may legitimately
+	// be 0 (e.g. a no-cook recipe), so those stay non-negative below.
+	if raw := strings.TrimSpace(firstNonEmpty(form["servings"])); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 32)
+		if err != nil || n <= 0 {
+			return store.RecipeWithRelationsInput{}, "servings must be greater than 0"
+		}
+		v := int32(n)
+		in.Servings = &v
 	}
-	in.Servings = servings
 
 	prep, msg := parseOptionalNonNegativeInt32(form["prep_time_minutes"], "prep time")
 	if msg != "" {

@@ -68,6 +68,20 @@ type Pantry struct {
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
 
+// Collection maps to the collections table: a user-curated, named list of
+// recipes (e.g. "Weeknight Dinners", "Meal Prep Sunday"). Owned by exactly
+// one user (UserID) — see the collection_recipes junction table for which
+// recipes are in it (models.CombinedIngredientItem-style many-to-many,
+// modelled in internal/store/collections.go rather than here since it
+// carries no fields of its own beyond the two IDs).
+type Collection struct {
+	ID        int64     `json:"id" db:"id"`
+	UserID    int64     `json:"user_id" db:"user_id"`
+	Name      string    `json:"name" db:"name"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
 // FoodLocation maps to the food_locations table (fridge, freezer, pantry, …).
 type FoodLocation struct {
 	ID        int64     `json:"id" db:"id"`
