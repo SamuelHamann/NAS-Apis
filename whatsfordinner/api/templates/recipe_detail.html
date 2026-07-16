@@ -34,7 +34,7 @@
       {{if .Recipe.Servings}}<span>Serves <strong>{{.Recipe.Servings}}</strong></span>{{end}}
       {{if .Recipe.PrepTimeMinutes}}<span>Prep <strong>{{.Recipe.PrepTimeMinutes}}m</strong></span>{{end}}
       {{if .Recipe.CookTimeMinutes}}<span>Cook <strong>{{.Recipe.CookTimeMinutes}}m</strong></span>{{end}}
-      {{if .SelectedPantry}}<span>Checked against <strong>{{.SelectedPantry.Name}}</strong></span>{{end}}
+      {{if .SelectedPantry}}<span>Checked against <strong>{{.SelectedPantry.Name}}</strong>{{if .TimesCooked}} (cooked {{.TimesCooked}} time{{if ne .TimesCooked 1}}s{{end}}){{end}}</span>{{end}}
     </div>
 
     <div class="wfd-toolbar__row">
@@ -64,15 +64,19 @@
 
          A native <dialog>, opened via the plain onclick above (no shared
          script needed — it's a one-off wire-up, unlike the tab/item-row
-         behaviour in scripts.html). Submitting posts to /recipes/{id}/cook;
-         RecipeCook (recipe_cook.go) redirects back here — preserving the
-         dialog's choices via the cook_* query params consumed by
-         RecipeDetailPage — either on a validation error, or when ingredients
-         are missing from the chosen pantry and need a "cook anyway"
-         confirmation (CookMissingNames non-empty below), in which case the
-         inline script at the bottom of this block reopens the dialog. */}}
+         behaviour in scripts.html). Submitting GETs
+         /recipes/{id}/cook (RecipeCookSessionPage, recipe_cook_session.go)
+         rather than posting straight to the pantry-decrementing endpoint —
+         that page is a simplified ingredient/instruction checklist, and only
+         its own "Finish cooking" button actually writes anything. Either
+         handler redirects back here — preserving the dialog's choices via
+         the cook_* query params consumed by RecipeDetailPage — on a
+         validation error, or when ingredients are missing from the chosen
+         pantry and need a "cook anyway" confirmation (CookMissingNames
+         non-empty below), in which case the inline script at the bottom of
+         this block reopens the dialog. */}}
     <dialog id="cook-dialog" class="wfd-dialog">
-      <form method="post" action="/recipes/{{.Recipe.ID}}/cook" class="wfd-pantry-form">
+      <form method="get" action="/recipes/{{.Recipe.ID}}/cook" class="wfd-pantry-form">
         <h2 class="wfd-dialog__title wfd-pantry-form__wide">Cook {{.Recipe.Name}}</h2>
 
         {{if .CookMissingNames}}
@@ -125,7 +129,7 @@
 
         <div class="wfd-pantry-form__actions">
           <button type="submit" class="wfd-btn wfd-btn--ghost" formmethod="dialog">Cancel</button>
-          <button type="submit" class="wfd-btn wfd-btn--primary">{{if .CookMissingNames}}Cook anyway{{else}}Cook{{end}}</button>
+          <button type="submit" class="wfd-btn wfd-btn--primary">{{if .CookMissingNames}}Cook anyway{{else}}Start cooking{{end}}</button>
         </div>
       </form>
     </dialog>

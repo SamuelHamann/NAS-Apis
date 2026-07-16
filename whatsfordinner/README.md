@@ -178,6 +178,7 @@ whatsfordinner/
 │   │       ├── recipe_detail_view.go  # Pure ingredient-ordering + instruction-parsing logic
 │   │       ├── recipe_detail_page.go  # GET /recipes/{id} handler
 │   │       ├── recipe_cook.go         # POST /recipes/{id}/cook handler
+│   │       ├── recipe_cook_session.go # GET /recipes/{id}/cook handler (checklist page shown while cooking)
 │   │       ├── recipe_form_page.go    # GET/POST /recipes/new + /recipes/{id}/edit + /recipes/{id}/update
 │   │       ├── ingredients.go
 │   │       ├── ingredients_page.go    # GET /ingredients + CRUD handlers
@@ -199,6 +200,7 @@ whatsfordinner/
 │   │   ├── login.html       # GET /login
 │   │   ├── recipes.html     # GET /recipes (+ recipe_item partial)
 │   │   ├── recipe_detail.html # GET /recipes/{id}
+│   │   ├── recipe_cook_session.html # GET /recipes/{id}/cook - checklist page shown while cooking
 │   │   ├── pantry.html      # GET /pantry (+ pantry_item / pantry_form partials)
 │   │   └── ingredients.html # GET /ingredients - Ingredients + Combined ingredients tabs
 │   │                        #   (+ ingredient_item/ingredient_form and
@@ -558,7 +560,8 @@ when no one is signed in.
 | GET    | `/recipes/{id}`        | Recipe detail page: author, ingredients (missing ones highlighted), instructions, "add to collection" widget |
 | GET    | `/recipes/{id}/edit`   | Edit-recipe form (prefilled)                                       |
 | POST   | `/recipes/{id}/update` | Save a recipe's fields, replacing its ingredient list and tags (form) |
-| POST   | `/recipes/{id}/cook`   | Cook the recipe: decrement pantry stock, record it as cooked, optionally save leftovers as a combined ingredient (form) |
+| GET    | `/recipes/{id}/cook`   | Cook session page: simplified ingredient/instruction checklist to follow while cooking, reached from the "Cook this recipe" dialog |
+| POST   | `/recipes/{id}/cook`   | Finish cooking: decrement pantry stock, record it as cooked, optionally save leftovers as a combined ingredient (form, posted from the cook session page) |
 | GET    | `/pantry`              | Pantry page: grouped/coloured stock list with sort + tag filter  |
 | POST   | `/pantry`              | Add a pantry item (form)                                          |
 | POST   | `/pantry/{id}/update`  | Edit a pantry item (form)                                         |
@@ -670,9 +673,14 @@ recipes list sit in a row alongside **Cook this recipe**.
   `internal/handlers/templates/recipe_detail_view.go`.
 
 The same `?pantry_id=...` query parameter as the recipes/pantry pages picks
-which pantry the ingredient list is checked against.
+which pantry the ingredient list is checked against. That "Checked against
+{pantry}" line also shows how many times the recipe has been cooked in
+parentheses (e.g. "Checked against Main kitchen (cooked 3 times)"), from
+`past_cooked_recipes.times_cooked` (`Store.GetPastCookedByRecipeID`,
+`internal/store/past_cooked.go`) — omitted entirely for a recipe that's
+never been cooked.
 
-#### Cooking a recipe (`POST /recipes/{id}/cook`)
+#### Cooking a recipe (`GET`/`POST /recipes/{id}/cook`)
 
 A "Cook this recipe" button (hidden when no pantry exists yet) opens a
 native `<dialog>` — the app's one modal popup, everything else uses inline
@@ -683,7 +691,24 @@ checkbox reveals two more fields — the combined ingredient's own amount and
 unit — hidden/shown purely in CSS via `:has()` (`.wfd-combined-fields` in
 styles.html), the same technique the tag-filter chips already use; they
 default to the multiplier's value and the "bunch" unit respectively, but are
-independently editable. Submitting the dialog:
+independently editable.
+
+Submitting the dialog **doesn't cook anything yet** — it GETs
+`/recipes/{id}/cook` (`RecipeCookSessionPage`,
+`internal/handlers/templates/recipe_cook_session.go`), which renders a
+simplified **cook session page**: the recipe's ingredients and instruction
+steps, each with its own checkbox to tick off while actually cooking (a pure
+client-side aid — see `cook-checklist-script` in scripts.html — nothing
+about which boxes are checked is ever submitted). That page's own "Finish
+cooking" button is what actually POSTs to `/recipes/{id}/cook` and performs
+the real work; "Cancel" is a plain link back to the recipe page that writes
+nothing. The cook session page also requests a
+[Screen Wake Lock](https://developer.mozilla.org/en-US/docs/Web/API/Screen_Wake_Lock_API)
+(`wake-lock-script` in scripts.html) so the display doesn't lock itself
+mid-recipe from inactivity — feature-detected and silently a no-op on
+browsers/contexts that don't support it.
+
+`RecipeCook` (the `POST` handler) itself:
 
 1. **Decrements the chosen pantry's stock** for every one of the recipe's
    ingredients by `quantity × multiplier`, **floored at zero** — it never
@@ -709,11 +734,12 @@ the same check used to highlight ingredients above), nothing is written yet:
 the dialog reopens listing what's missing with a "Cook anyway" button. This
 is a plain redirect-and-redisplay round trip (the `cook_*` query params
 consumed by `RecipeDetailPage`), the same pattern every other form on this
-site uses for validation errors — no AJAX. Confirming resubmits with a
-hidden `confirmed=true` field, which skips the missing-ingredient check on
-the next attempt. All three writes happen in one transaction
-(`Store.CookRecipe`, `internal/store/cook.go`) — either everything above
-happens, or nothing does.
+site uses for validation errors — no AJAX. This check runs on the initial
+GET (before the cook session page is even shown), and again as a safety net
+in the POST handler; confirming resubmits with a hidden `confirmed=true`
+field, which skips it on the next attempt. The three writes above happen in
+one transaction (`Store.CookRecipe`, `internal/store/cook.go`) — either
+everything happens, or nothing does.
 
 ### Recipe form (`GET`/`POST /recipes/new`, `GET`/`POST /recipes/{id}/edit`)
 

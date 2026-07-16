@@ -562,3 +562,66 @@
 })();
 </script>
 {{end}}
+
+{{/*
+    Shared vanilla-JS "cross it off" behaviour for the cook session's
+    ingredient/instruction checklists (templates/recipe_cook_session.html).
+    Include once via {{template "cook-checklist-script" .}}.
+
+    Every checkbox carries .wfd-checklist__box; checking one toggles
+    .wfd-checklist__item--done (strikethrough, see styles.html) on its
+    closest .wfd-checklist__item. Purely a visual aid — nothing here is
+    submitted anywhere, so there's no state to lose with JS disabled beyond
+    the strikethrough itself.
+*/}}
+{{define "cook-checklist-script"}}
+<script>
+(function () {
+  document.querySelectorAll('.wfd-checklist__box').forEach(function (box) {
+    box.addEventListener('change', function () {
+      var item = box.closest('.wfd-checklist__item');
+      if (item) item.classList.toggle('wfd-checklist__item--done', box.checked);
+    });
+  });
+})();
+</script>
+{{end}}
+
+{{/*
+    Screen Wake Lock: keeps the display on while the cook session page
+    (templates/recipe_cook_session.html) is open, so the screen doesn't lock
+    mid-recipe just from not being touched for a while. Include once via
+    {{template "wake-lock-script" .}}.
+
+    Feature-detected — the Wake Lock API needs a secure context and isn't
+    supported everywhere (notably older Safari), so unsupported browsers
+    silently keep today's behaviour instead of erroring. A lock is
+    automatically released by the browser when the tab is hidden, so it's
+    re-requested on visibilitychange once the tab is visible again (per the
+    API's own recommended pattern) rather than trying to hold it across a
+    backgrounding.
+*/}}
+{{define "wake-lock-script"}}
+<script>
+(function () {
+  if (!('wakeLock' in navigator)) return;
+  var sentinel = null;
+
+  function request() {
+    navigator.wakeLock.request('screen').then(function (s) {
+      sentinel = s;
+    }).catch(function () {
+      // Most commonly a user/browser policy rejection (e.g. low battery,
+      // backgrounded tab) — nothing actionable to do but leave the screen
+      // to sleep normally.
+    });
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (sentinel && document.visibilityState === 'visible') request();
+  });
+
+  request();
+})();
+</script>
+{{end}}

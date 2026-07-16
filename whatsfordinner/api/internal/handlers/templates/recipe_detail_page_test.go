@@ -49,6 +49,7 @@ func recipeDetailPageFixture(t *testing.T) RecipeDetailPageData {
 			{ID: 20, Name: "cup"},
 		},
 		CookCombinedUnitID: 14,
+		TimesCooked:        3,
 	}
 }
 
@@ -72,6 +73,7 @@ func TestRecipeDetailTemplateRendersRecipe(t *testing.T) {
 		"Prep <strong>10m</strong>",
 		"Cook <strong>20m</strong>",
 		"Main kitchen",
+		"(cooked 3 times)",
 		`<span class="wfd-tag-chip">quick</span>`,
 		`<span class="wfd-tag-chip">vegetarian</span>`,
 		`href="/recipes"`, // back link
@@ -235,6 +237,33 @@ func TestRecipeDetailTemplateEmptyIngredientsAndInstructions(t *testing.T) {
 	}
 	if !strings.Contains(body, "No instructions provided.") {
 		t.Error("expected the empty-instructions message")
+	}
+}
+
+func TestRecipeDetailTemplateTimesCookedSingularAndZero(t *testing.T) {
+	ts, ok := parseTestTemplates(t)["recipe_detail.html"]
+	if !ok {
+		t.Fatal("recipe_detail.html not found in template cache")
+	}
+
+	data := recipeDetailPageFixture(t)
+	data.TimesCooked = 1
+
+	var buf bytes.Buffer
+	if err := ts.Execute(&buf, data); err != nil {
+		t.Fatalf("execute recipe_detail.html: %v", err)
+	}
+	if !strings.Contains(buf.String(), "(cooked 1 time)") {
+		t.Errorf("expected singular %q in rendered body, got:\n%s", "(cooked 1 time)", buf.String())
+	}
+
+	data.TimesCooked = 0
+	buf.Reset()
+	if err := ts.Execute(&buf, data); err != nil {
+		t.Fatalf("execute recipe_detail.html: %v", err)
+	}
+	if strings.Contains(buf.String(), "cooked") {
+		t.Errorf("expected no cooked-count parenthetical when TimesCooked is 0, got:\n%s", buf.String())
 	}
 }
 

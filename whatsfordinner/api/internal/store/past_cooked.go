@@ -57,6 +57,25 @@ func (s *Store) GetPastCooked(ctx context.Context, id uuid.UUID) (models.PastCoo
 	return item, nil
 }
 
+// GetPastCookedByRecipeID returns the past-cooked entry for a single recipe
+// (recipe_id is unique in past_cooked_recipes — CookRecipe upserts on it),
+// or ErrNotFound if the recipe has never been cooked.
+func (s *Store) GetPastCookedByRecipeID(ctx context.Context, recipeID int64) (models.PastCookedRecipe, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+pastCookedColumns+`
+		FROM   past_cooked_recipes
+		WHERE  recipe_id = $1`, recipeID)
+	if err != nil {
+		return models.PastCookedRecipe{}, mapError(err)
+	}
+
+	item, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[models.PastCookedRecipe])
+	if err != nil {
+		return models.PastCookedRecipe{}, mapError(err)
+	}
+	return item, nil
+}
+
 // CreatePastCooked inserts a new past-cooked entry and returns the stored row.
 // A nil LastCookedAt defaults to the database's now().
 func (s *Store) CreatePastCooked(ctx context.Context, in PastCookedInput) (models.PastCookedRecipe, error) {

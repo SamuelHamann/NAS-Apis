@@ -53,6 +53,11 @@ type RecipeDetailPageData struct {
 	// dialog, shown when "Create a combined ingredient" is checked.
 	Units []models.Unit
 
+	// TimesCooked is how many times this recipe has been cooked (0 if
+	// never), shown in parentheses next to "Checked against" on the page.
+	// See past_cooked_recipes / GetPastCookedByRecipeID.
+	TimesCooked int32
+
 	// Cook-dialog state, populated from query params after a redirect from
 	// RecipeCook (a validation error, or a pending missing-ingredient
 	// confirmation) — zero values otherwise. See recipe_cook.go.
@@ -131,6 +136,19 @@ func (h *Handler) RecipeDetailPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TimesCooked stays 0 (its zero value) when the recipe has never been
+	// cooked — ErrNotFound just means no past_cooked_recipes row exists yet,
+	// not a real error.
+	var timesCooked int32
+	pastCooked, err := h.store.GetPastCookedByRecipeID(ctx, id)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		h.logger.Error("get past cooked", "error", err)
+		http.Error(w, "failed to load recipe", http.StatusInternalServerError)
+		return
+	} else if err == nil {
+		timesCooked = pastCooked.TimesCooked
+	}
+
 	var instructions []string
 	if recipe.Instructions != nil {
 		instructions = ParseInstructionSteps(*recipe.Instructions)
@@ -157,6 +175,7 @@ func (h *Handler) RecipeDetailPage(w http.ResponseWriter, r *http.Request) {
 		SelectedPantry: selected,
 		Pantries:       pantries,
 		Units:          units,
+		TimesCooked:    timesCooked,
 		CurrentURL:     r.URL.RequestURI(),
 
 		Error:              r.URL.Query().Get("error"),

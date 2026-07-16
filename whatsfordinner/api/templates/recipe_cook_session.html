@@ -1,0 +1,97 @@
+{{/*
+    Cook session: GET /recipes/{id}/cook. A simplified, checklist-friendly
+    view shown while actually cooking — reached from the recipe detail
+    page's "Cook this recipe" dialog (see recipe_detail.html), which GETs
+    here with the dialog's choices as query params instead of posting
+    straight to the pantry-decrementing endpoint. Nothing is written until
+    "Finish cooking" is pressed, which POSTs those same choices (carried
+    forward as the hidden fields below) to RecipeCook
+    (recipe_cook.go) — the handler that actually decrements the pantry and
+    records the cook. "Cancel" is a plain link back to the recipe page; it
+    writes nothing either.
+
+    Ingredient/instruction checkboxes are a pure client-side aid (see
+    cook-checklist-script) — checking one off just crosses out its text, no
+    state is submitted anywhere.
+*/}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>{{.Title}} · What's for Dinner</title>
+  {{template "styles" .}}
+</head>
+<body>
+  {{template "navbar" .}}
+
+  <main class="wfd-main wfd-container">
+    <h1 class="wfd-page-title">Cooking {{.Recipe.Name}}</h1>
+
+    <div class="wfd-recipe-meta">
+      {{if .SelectedPantry}}<span>From <strong>{{.SelectedPantry.Name}}</strong></span>{{end}}
+      {{if .MultiplierRaw}}<span>Quantity <strong>{{.MultiplierRaw}}</strong></span>{{end}}
+    </div>
+
+    <section class="wfd-recipe-section">
+      <h2 class="wfd-section-title">Ingredients</h2>
+      {{if not .Ingredients}}
+        <p class="wfd-list-empty">No ingredients listed for this recipe.</p>
+      {{else}}
+      <ul class="wfd-ingredient-list wfd-checklist">
+        {{range .Ingredients}}
+        <li class="wfd-ingredient-item wfd-checklist__item">
+          <label class="wfd-checklist__label">
+            <input type="checkbox" class="wfd-checklist__box" />
+            <span class="wfd-ingredient-item__name">{{.IngredientName}}</span>
+            {{if .QuantityText}}<span class="wfd-ingredient-item__qty">{{.QuantityText}}</span>{{end}}
+            {{if .Note}}<span class="wfd-ingredient-item__note">{{.Note}}</span>{{end}}
+          </label>
+        </li>
+        {{end}}
+      </ul>
+      {{end}}
+    </section>
+
+    <section class="wfd-recipe-section">
+      <h2 class="wfd-section-title">Instructions</h2>
+      {{if not .Instructions}}
+        <p class="wfd-list-empty">No instructions provided.</p>
+      {{else}}
+      <ol class="wfd-instruction-list wfd-checklist">
+        {{range .Instructions}}
+        <li class="wfd-checklist__item">
+          <label class="wfd-checklist__label">
+            <input type="checkbox" class="wfd-checklist__box" />
+            <span>{{.}}</span>
+          </label>
+        </li>
+        {{end}}
+      </ol>
+      {{end}}
+    </section>
+
+    <div class="wfd-toolbar__row">
+      <a class="wfd-btn wfd-btn--ghost" href="/recipes/{{.Recipe.ID}}{{if .SelectedPantry}}?pantry_id={{.SelectedPantry.ID}}{{end}}">Cancel</a>
+
+      <form method="post" action="/recipes/{{.Recipe.ID}}/cook">
+        <input type="hidden" name="confirmed" value="true" />
+        <input type="hidden" name="pantry_id" value="{{.PantryID}}" />
+        <input type="hidden" name="multiplier" value="{{.MultiplierRaw}}" />
+        {{if .CreateCombined}}
+        <input type="hidden" name="create_combined" value="on" />
+        <input type="hidden" name="combined_quantity" value="{{.CombinedQuantityRaw}}" />
+        {{if .CombinedUnitID}}<input type="hidden" name="combined_unit_id" value="{{deref .CombinedUnitID}}" />{{end}}
+        {{end}}
+        <button type="submit" class="wfd-btn wfd-btn--primary">
+          {{template "icon-bolt"}}
+          <span>Finish cooking</span>
+        </button>
+      </form>
+    </div>
+  </main>
+
+  {{template "wake-lock-script" .}}
+  {{template "cook-checklist-script" .}}
+</body>
+</html>

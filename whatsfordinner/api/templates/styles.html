@@ -1297,6 +1297,27 @@
   }
   .wfd-instruction-list li { padding-left: 0.2rem; }
 
+  /* --- Cook session checklist (templates/recipe_cook_session.html) -------
+     Ingredient/instruction checkboxes are a pure client-side aid (see
+     cook-checklist-script in scripts.html): checking one off just crosses
+     out its row via .wfd-checklist__item--done, nothing is submitted. */
+  .wfd-checklist__label {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.3rem 0.6rem;
+    width: 100%;
+    cursor: pointer;
+  }
+  .wfd-checklist__box {
+    align-self: center;
+    flex: none;
+  }
+  .wfd-checklist__item--done .wfd-checklist__label {
+    text-decoration: line-through;
+    color: var(--wfd-text-muted);
+  }
+
   @media (max-width: 420px) {
     .wfd-user { max-width: 32vw; }
     .wfd-tiles { grid-template-columns: repeat(2, 1fr); }

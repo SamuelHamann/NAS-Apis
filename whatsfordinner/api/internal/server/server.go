@@ -163,10 +163,16 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /recipes/{id}/edit", h.RecipeEditPage)
 	mux.HandleFunc("POST /recipes/{id}/update", h.RecipeUpdate)
 
-	// Cook a recipe: decrements the chosen pantry's stock for its
-	// ingredients (scaled by a multiplier, floored at zero), records/updates
-	// past_cooked_recipes, and optionally folds the ingredients into a
-	// combined ingredient named after the recipe. See recipe_cook.go.
+	// Cook a recipe. The recipe detail page's "Cook this recipe" dialog GETs
+	// /recipes/{id}/cook first: a simplified ingredient/instruction
+	// checklist meant to stay open while actually cooking (see
+	// recipe_cook_session.go), which writes nothing on its own. Only its own
+	// "Finish cooking" button POSTs here, which decrements the chosen
+	// pantry's stock for the recipe's ingredients (scaled by a multiplier,
+	// floored at zero), records/updates past_cooked_recipes, and optionally
+	// folds the ingredients into a combined ingredient named after the
+	// recipe. See recipe_cook.go.
+	mux.HandleFunc("GET /recipes/{id}/cook", h.RecipeCookSessionPage)
 	mux.HandleFunc("POST /recipes/{id}/cook", h.RecipeCook)
 
 	// Pantry page: grouped, colour-coded list of the selected pantry's

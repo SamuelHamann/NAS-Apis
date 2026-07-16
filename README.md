@@ -35,7 +35,8 @@ available while that migration is in progress.
 | GET       | `/recipes/new`, `/recipes/{id}/edit` | Create/edit-recipe form (HTML) |
 | POST      | `/recipes`, `/recipes/{id}/update` | Save a recipe's fields, ingredient list and tags (HTML form) |
 | GET       | `/recipes/{id}`                   | Recipe detail page (HTML): author, ingredients (missing ones highlighted), instructions, "add to collection" widget |
-| POST      | `/recipes/{id}/cook`              | Cook a recipe: decrement pantry stock, log it as cooked, optionally save leftovers as a combined ingredient (HTML form) |
+| GET       | `/recipes/{id}/cook`              | Cook session page (HTML): simplified ingredient/instruction checklist to follow while actually cooking, reached from the recipe detail page's "Cook this recipe" dialog |
+| POST      | `/recipes/{id}/cook`              | Finish cooking: decrement pantry stock, log it as cooked, optionally save leftovers as a combined ingredient (HTML form, posted from the cook session page) |
 | CRUD      | `/recipes`, `/recipes/{id}`       | Recipes (bigint id)                    |
 | GET       | `/recipes/cookable`               | Recipes cookable from pantry stock   |
 | GET       | `/ingredients`                    | Ingredients page (HTML): Ingredients tab + Combined ingredients tab (`?tab=combined`), switched client-side |

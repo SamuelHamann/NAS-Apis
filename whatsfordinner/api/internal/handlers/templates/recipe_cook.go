@@ -37,6 +37,13 @@ type cookFormState struct {
 // floored at zero), records/updates past_cooked_recipes, and optionally
 // folds the ingredients into a combined ingredient named after the recipe.
 //
+// In normal use this is only ever reached via the cook session page's
+// "Finish cooking" button (see RecipeCookSessionPage in
+// recipe_cook_session.go and templates/recipe_cook_session.html), by which
+// point the missing-ingredient check below has already run once as a GET —
+// the check is repeated here anyway as a safety net against a submission
+// crafted or replayed outside that flow.
+//
 // If any ingredient is missing from the chosen pantry (zero stock) and the
 // submission isn't already marked "confirmed", nothing is written yet — the
 // browser is redirected back to the recipe page with the missing-ingredient
