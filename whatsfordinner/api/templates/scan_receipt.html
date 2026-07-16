@@ -1,12 +1,17 @@
 {{/*
-    Scan receipt: GET/POST /scan-receipt. Mobile-only entry point (see the
-    home page's "Scan receipt" tile, hidden on desktop). Takes a photo via
-    the device camera (capture="environment"), sends it to Gemini asking for
-    JSON matching receiptSchema (see scan_receipt.go), and renders the parsed
-    result as a real item list plus a total/taxes summary.
+    Scan receipt: GET/POST /scan-receipt. Available on every platform, both
+    from the home page's "Scan receipt" tile and the navbar/burger menu.
+    The file input's capture="environment" hints at the device camera on
+    phones; on desktop browsers (which don't support that attribute) it
+    just falls back to a normal file picker, so choosing an existing photo
+    works fine too. Sends the photo to Gemini asking for JSON matching
+    receiptSchema (see scan_receipt.go), and renders the parsed result as a
+    real item list plus a total/taxes summary.
 
     POST renders this same template directly (see ScanReceiptSubmit's doc
-    comment) rather than redirecting, since nothing here is persisted.
+    comment) rather than redirecting, since a photo can't be round-tripped
+    through a redirect URL — each item is still queued as a
+    pending_pantry_items row.
 
     A second "Queue" tab shows the pending_pantry_items rows every scan
     queues up (see loadQueueTab in scan_receipt.go), filterable by status via

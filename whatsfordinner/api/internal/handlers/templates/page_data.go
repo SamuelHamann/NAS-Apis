@@ -22,9 +22,9 @@ type PageData struct {
 	// SignedIn is false.
 	CurrentUser string
 	// ActiveNav marks which navbar link (see templates/navbar.html) should
-	// be highlighted as "current page": "pantry", "recipes" or
-	// "ingredients". Empty means none of them are highlighted (e.g. the
-	// home page or /login, which aren't in the nav).
+	// be highlighted as "current page": "pantry", "recipes",
+	// "ingredients" or "scan-receipt". Empty means none of them are
+	// highlighted (e.g. the home page or /login, which aren't in the nav).
 	ActiveNav string
 }
 

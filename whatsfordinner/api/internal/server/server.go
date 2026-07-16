@@ -198,10 +198,12 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /combined-ingredients/{id}/update", h.CombinedIngredientsUpdate)
 	mux.HandleFunc("POST /combined-ingredients/{id}/delete", h.CombinedIngredientsDelete)
 
-	// Scan receipt: snap a photo of a grocery receipt (mobile-only entry
-	// point — see the home page's "Scan receipt" tile) and have Gemini list
-	// what was bought. Nothing is persisted, so the result renders directly
-	// from the POST handler rather than via a redirect. See
+	// Scan receipt: snap or upload a photo of a grocery receipt (works on
+	// any platform — linked from the home page's "Scan receipt" tile and
+	// the navbar/burger menu) and have Gemini list what was bought, queuing
+	// each item as a pending_pantry_items row. The result still renders
+	// directly from the POST handler rather than via a redirect, since a
+	// photo can't be round-tripped through a redirect URL. See
 	// internal/gemini and scan_receipt.go.
 	mux.HandleFunc("GET /scan-receipt", h.ScanReceiptPage)
 	mux.HandleFunc("POST /scan-receipt", h.ScanReceiptSubmit)

@@ -1297,14 +1297,6 @@
   }
   .wfd-instruction-list li { padding-left: 0.2rem; }
 
-  /* "Scan receipt" only makes sense with a phone camera in hand: show it
-     only on small, touch-primary viewports instead of gating on JS/UA
-     sniffing, so it degrades gracefully everywhere. */
-  .wfd-mobile-only { display: none; }
-  @media (pointer: coarse) and (max-width: 600px) {
-    .wfd-mobile-only { display: flex; }
-  }
-
   @media (max-width: 420px) {
     .wfd-user { max-width: 32vw; }
     .wfd-tiles { grid-template-columns: repeat(2, 1fr); }

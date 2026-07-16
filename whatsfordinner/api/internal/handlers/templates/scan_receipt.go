@@ -187,7 +187,7 @@ const receiptPrompt = `This image is a photo of a grocery store receipt. ` +
 
 // ScanReceiptPage renders GET /scan-receipt: the "take a photo" form.
 func (h *Handler) ScanReceiptPage(w http.ResponseWriter, r *http.Request) {
-	data := ScanReceiptPageData{PageData: h.newPageData(r, "Scan receipt", "")}
+	data := ScanReceiptPageData{PageData: h.newPageData(r, "Scan receipt", "scan-receipt")}
 
 	if err := h.loadPantryPicker(r, &data); err != nil {
 		h.logger.Error("list pantries", "error", err)
@@ -223,7 +223,7 @@ func (h *Handler) loadPantryPicker(r *http.Request, data *ScanReceiptPageData) e
 // a photo through a redirect URL isn't practical, so the result page is
 // rendered straight from the POST.
 func (h *Handler) ScanReceiptSubmit(w http.ResponseWriter, r *http.Request) {
-	data := ScanReceiptPageData{PageData: h.newPageData(r, "Scan receipt", "")}
+	data := ScanReceiptPageData{PageData: h.newPageData(r, "Scan receipt", "scan-receipt")}
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxReceiptPhotoBytes)
 	if err := r.ParseMultipartForm(maxReceiptPhotoBytes); err != nil {

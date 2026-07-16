@@ -27,6 +27,9 @@ func navbarActiveCases(t *testing.T) []struct {
 		{"pantry", "pantry.html", pantryPageFixture(t), "/pantry"},
 		{"recipes", "recipes.html", recipesPageFixture(t), "/recipes"},
 		{"recipe_detail", "recipe_detail.html", recipeDetailPageFixture(t), "/recipes"},
+		{"scan_receipt", "scan_receipt.html", ScanReceiptPageData{
+			PageData: PageData{Title: "Scan receipt", ActiveNav: "scan-receipt"},
+		}, "/scan-receipt"},
 	}
 }
 
@@ -36,7 +39,7 @@ func navbarActiveCases(t *testing.T) []struct {
 // the inline copy and its twin inside the burger-menu dropdown) getting
 // wfd-nav-link--active, and no other link does.
 func TestNavbarHighlightsActivePage(t *testing.T) {
-	allHrefs := []string{"/pantry", "/recipes", "/ingredients"}
+	allHrefs := []string{"/pantry", "/recipes", "/ingredients", "/scan-receipt"}
 
 	for _, tc := range navbarActiveCases(t) {
 		t.Run(tc.name, func(t *testing.T) {
@@ -109,8 +112,8 @@ func TestNavbarNoActiveLinkOnHome(t *testing.T) {
 
 // TestNavbarRendersMobileBurgerMenu checks that every page ships the no-JS
 // <details> burger menu (left side, see templates/navbar.html) with the
-// same three destinations as the inline nav, so it works even before the
-// CSS breakpoint that actually reveals it on narrow viewports.
+// same destinations as the inline nav, so it works even before the CSS
+// breakpoint that actually reveals it on narrow viewports.
 func TestNavbarRendersMobileBurgerMenu(t *testing.T) {
 	ts, ok := parseTestTemplates(t)["home.html"]
 	if !ok {
@@ -139,8 +142,8 @@ func TestNavbarRendersMobileBurgerMenu(t *testing.T) {
 	// Each destination must appear twice: once in the always-in-the-DOM
 	// inline nav, once inside the burger dropdown. Match on the nav-link
 	// class + href together (not a bare href) since the home page's
-	// dashboard tiles *also* link to /pantry and /recipes.
-	for _, href := range []string{`href="/pantry"`, `href="/recipes"`, `href="/ingredients"`} {
+	// dashboard tiles *also* link to /pantry, /recipes and /scan-receipt.
+	for _, href := range []string{`href="/pantry"`, `href="/recipes"`, `href="/ingredients"`, `href="/scan-receipt"`} {
 		want := `class="wfd-nav-link" ` + href
 		if got := strings.Count(body, want); got != 2 {
 			t.Errorf("expected %q to appear twice (inline nav + burger menu), got %d", want, got)

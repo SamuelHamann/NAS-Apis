@@ -570,7 +570,7 @@ when no one is signed in.
 | POST   | `/combined-ingredients`             | Add a combined ingredient, including its component items (form) |
 | POST   | `/combined-ingredients/{id}/update` | Edit a combined ingredient and replace its component items (form) |
 | POST   | `/combined-ingredients/{id}/delete` | Delete a combined ingredient (its items cascade) (form)  |
-| GET    | `/scan-receipt`        | Scan receipt page: photo-upload form (mobile-only entry point on the home page) |
+| GET    | `/scan-receipt`        | Scan receipt page: photo-upload form (available on every platform, in the main nav/burger menu and a home page tile) |
 | POST   | `/scan-receipt`        | Send the photo to Gemini and render what it read back directly (form; not a redirect — see below) |
 | GET    | `/settings/admin`      | Admin page: create/rename pantries + a user x pantry access matrix (see below) |
 | POST   | `/settings/admin/pantries` | Create a pantry — form field: `name`                          |
@@ -878,14 +878,17 @@ button. Validation (`parseCombinedIngredientForm` in
 
 ### Scan receipt (`GET`/`POST /scan-receipt`)
 
-A "Scan receipt" tile on the home page (mobile-only — see `.wfd-mobile-only`
-in styles.html, hidden outside `(pointer: coarse) and (max-width: 600px)`)
-opens a form with `<input type="file" accept="image/*" capture="environment">`,
-which opens the phone's camera directly. Submitting it sends the photo to
-Gemini (`internal/gemini`, a small REST client for the `generateContent`
-endpoint — no SDK dependency), asking it to extract every item purchased
-(ignoring can/bottle deposit lines — "consigne"/"deposit"/"CRV", not a
-purchased item), plus the receipt's total and any taxes.
+Reachable from the main nav/burger menu (`navbar.html`, `ActiveNav ==
+"scan-receipt"`) and a "Scan receipt" tile on the home page, on every
+platform. A form with `<input type="file" accept="image/*"
+capture="environment">` opens the phone's camera directly on mobile; on a
+desktop browser (which doesn't support `capture`) it falls back to a plain
+file picker, so uploading an existing photo works there too — no
+platform-specific gating needed. Submitting it sends the photo to Gemini
+(`internal/gemini`, a small REST client for the `generateContent` endpoint —
+no SDK dependency), asking it to extract every item purchased (ignoring
+can/bottle deposit lines — "consigne"/"deposit"/"CRV", not a purchased
+item), plus the receipt's total and any taxes.
 
 **The response is structured JSON, not prose** — enforced via Gemini's
 `generationConfig.responseSchema` (`receiptSchema` in `scan_receipt.go`), not
