@@ -14,16 +14,6 @@
     <p class="wfd-page-subtitle">What would you like to do?</p>
 
     <div class="wfd-tiles">
-      <a class="wfd-tile" href="/recipes/quick">
-        <span class="wfd-tile__icon">{{template "icon-bolt"}}</span>
-        <span class="wfd-tile__label">Quick recipes</span>
-      </a>
-
-      <a class="wfd-tile" href="{{if .SignedIn}}#settings-menu{{else}}/login{{end}}">
-        <span class="wfd-tile__icon">{{template "icon-settings"}}</span>
-        <span class="wfd-tile__label">Settings</span>
-      </a>
-
       <a class="wfd-tile wfd-tile--accent" href="/recipes">
         <span class="wfd-tile__icon">{{template "icon-book"}}</span>
         <span class="wfd-tile__label">Recipes</span>

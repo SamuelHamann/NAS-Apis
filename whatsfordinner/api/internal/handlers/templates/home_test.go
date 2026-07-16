@@ -46,8 +46,6 @@ func TestHomeRendersSuccessfully(t *testing.T) {
 	for _, want := range []string{
 		"What's for Dinner", // navbar brand
 		"Sign in",           // signed-out navbar CTA (no cookie set on this request)
-		"Quick recipes",
-		"Settings",
 		"Recipes",
 		"Pantry",
 		"Scan receipt",
@@ -85,8 +83,7 @@ func TestHomeTemplateRendersSignedInState(t *testing.T) {
 	for _, want := range []string{
 		"Hey Alice 👋",
 		`class="wfd-user"`,
-		`id="settings-menu"`,
-		`href="#settings-menu"`, // Settings tile jumps to the navbar menu once signed in
+		`id="settings-menu"`, // navbar's own settings dropdown, unrelated to the (now-removed) home page tile
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("expected rendered home page to contain %q, got:\n%s", want, body)
